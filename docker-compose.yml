@@ -1,0 +1,18 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: dataguardian_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: dataguardian
+      POSTGRES_PASSWORD: dataguardian
+      POSTGRES_DB: dataguardian
+    ports:
+      - "55432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+volumes:
+  pg_data:
