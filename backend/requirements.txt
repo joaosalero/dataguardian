@@ -4,3 +4,5 @@ pytest
 pytest-asyncio
 httpx
 python-dotenv
+sqlalchemy
+psycopg2-binary
