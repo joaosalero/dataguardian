@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import logging
 from typing import Any
 import warnings
 
@@ -21,6 +22,7 @@ from app.core.database import get_db
 from app.models.user import User
 
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -92,12 +94,14 @@ async def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenRe
     username = payload.username.strip().lower()
     user = db.query(User).filter(User.email == username).one_or_none()
     if user is None or not verify_password(payload.password, user.hashed_password):
+        logger.warning("User login failed: username=%s", username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
         )
 
     token = create_access_token({"user_id": user.id})
+    logger.info("User login succeeded: user_id=%s", user.id)
     return TokenResponse(access_token=token)
 
 

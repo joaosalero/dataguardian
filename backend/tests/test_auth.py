@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator, Generator
+import logging
 
 import app.models
 import pytest
@@ -75,6 +76,30 @@ async def test_login_returns_jwt() -> None:
         token = await login_user(client)
 
     assert isinstance(token, str)
+
+
+@pytest.mark.asyncio
+async def test_login_logs_success_and_failure(caplog: pytest.LogCaptureFixture) -> None:
+    create_user("owner@example.com")
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        with caplog.at_level(logging.INFO):
+            success_response = await client.post(
+                "/auth/login",
+                json={"username": "owner@example.com", "password": "strong-password"},
+            )
+            failure_response = await client.post(
+                "/auth/login",
+                json={"username": "owner@example.com", "password": "wrong-password"},
+            )
+
+    assert success_response.status_code == 200
+    assert failure_response.status_code == 401
+    assert "User login succeeded" in caplog.text
+    assert "User login failed" in caplog.text
 
 
 @pytest.mark.asyncio

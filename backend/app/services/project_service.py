@@ -19,6 +19,7 @@ class ProjectService:
     def create_project(self, payload: ProjectCreate, user_id: int) -> Project:
         name = payload.name.strip()
         if not name:
+            logger.warning("Project creation failed: empty name user_id=%s", user_id)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Project name is required",
@@ -30,7 +31,7 @@ class ProjectService:
             description=description,
             user_id=user_id,
         )
-        logger.info("Project created with ID %s", project.id)
+        logger.info("Project created: project_id=%s user_id=%s", project.id, user_id)
         return project
 
     def list_projects(self, user_id: int) -> list[Project]:
@@ -39,11 +40,16 @@ class ProjectService:
     def get_project(self, project_id: int, user_id: int) -> Project:
         project = self.repository.get_by_id_for_user(project_id, user_id)
         if project is None:
+            logger.warning(
+                "Project not found or not accessible: project_id=%s user_id=%s",
+                project_id,
+                user_id,
+            )
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Project not found",
             )
-        logger.info("Project fetched: %s", project.id)
+        logger.info("Project fetched: project_id=%s user_id=%s", project.id, user_id)
         return project
 
     def delete_project(self, project_id: int, user_id: int) -> None:

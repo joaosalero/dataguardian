@@ -20,12 +20,13 @@ class AuditService:
     def run_project_audit(self, project_id: int) -> dict[str, int | list[dict[str, str]]]:
         project = self.db.get(Project, project_id)
         if project is None:
+            logger.warning("Audit failed: project not found project_id=%s", project_id)
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Project not found",
             )
 
-        logger.info("Audit started for project %s", project.id)
+        logger.info("Audit started: project_id=%s", project.id)
         simulated_schema = {
             "users": {
                 "columns": ["id", "email", "password"],
@@ -47,6 +48,12 @@ class AuditService:
 
         result = run_schema_audit(normalized_schema)
         audit_id = self._persist_audit_result(project_id, result)
+        logger.info(
+            "Audit completed: project_id=%s audit_id=%s score=%s",
+            project_id,
+            audit_id,
+            result["score"],
+        )
 
         return {
             "audit_id": audit_id,
@@ -87,7 +94,7 @@ class AuditService:
             self.db.add(audit_run)
             self.db.commit()
             self.db.refresh(audit_run)
-            logger.info("AuditRun persisted with ID: %s", audit_run.id)
+            logger.info("Audit run persisted: audit_id=%s", audit_run.id)
 
             findings = [
                 Finding(
@@ -105,4 +112,5 @@ class AuditService:
             return audit_run.id
         except SQLAlchemyError:
             self.db.rollback()
+            logger.exception("Audit persistence failed: project_id=%s", project_id)
             raise
