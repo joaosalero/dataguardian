@@ -1,18 +1,19 @@
-version: "3.9"
-
 services:
-  postgres:
+  db:
     image: postgres:15
-    container_name: dataguardian_postgres
+    container_name: dataguardian_db
     restart: always
     environment:
       POSTGRES_USER: dataguardian
       POSTGRES_PASSWORD: dataguardian
       POSTGRES_DB: dataguardian
     ports:
-      - "55432:5432"
+      - "5433:5432"
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
 
 volumes:
-  pg_data:
+  postgres_data:
+
+# Run: docker-compose up -d
+# Stop: docker-compose down

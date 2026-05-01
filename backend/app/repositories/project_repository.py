@@ -18,7 +18,7 @@ class ProjectRepository:
         return self.db.query(Project).order_by(Project.id).all()
 
     def get_by_id(self, project_id: int) -> Project | None:
-        return self.db.query(Project).filter(Project.id == project_id).first()
+        return self.db.get(Project, project_id)
 
     def delete(self, project: Project) -> None:
         self.db.delete(project)

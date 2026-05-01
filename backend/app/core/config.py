@@ -28,7 +28,7 @@ class Settings:
     debug: bool = True
     api_prefix: str = "/api"
     secret_key: str = "supersecretkey"
-    database_url: str = "postgresql://user:password@localhost:5432/dataguardian"
+    database_url: str = "postgresql://dataguardian:dataguardian@localhost:5432/dataguardian"
 
     @classmethod
     def from_env(cls) -> Settings:
