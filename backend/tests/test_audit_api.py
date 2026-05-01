@@ -1,7 +1,7 @@
 import pytest
 from fastapi import HTTPException, status
 
-from app.api.audit_routes import run_audit
+from app.api.audit_routes import get_audit_history, run_audit
 
 
 class FakeProjectService:
@@ -18,8 +18,9 @@ class FakeProjectService:
 
 
 class FakeAuditService:
-    def run_project_audit(self) -> dict[str, int | list[dict[str, str]]]:
+    def run_project_audit(self, project_id: int) -> dict[str, int | list[dict[str, str]]]:
         return {
+            "audit_id": 7,
             "score": 88,
             "findings": [
                 {
@@ -43,6 +44,16 @@ class FakeAuditService:
             ],
         }
 
+    def get_audit_history(self, project_id: int) -> list[dict[str, int | str]]:
+        return [
+            {
+                "audit_id": 7,
+                "project_id": project_id,
+                "status": "completed",
+                "score": 88,
+            }
+        ]
+
 
 @pytest.mark.asyncio
 async def test_audit_runs_successfully() -> None:
@@ -53,6 +64,7 @@ async def test_audit_runs_successfully() -> None:
     )
 
     assert result["score"] == 88
+    assert result["audit_id"] == 7
     assert isinstance(result["findings"], list)
     assert len(result["findings"]) == 3
 
@@ -68,3 +80,21 @@ async def test_audit_invalid_project_returns_404() -> None:
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Project not found"
+
+
+@pytest.mark.asyncio
+async def test_audit_history_returns_audits() -> None:
+    result = await get_audit_history(
+        project_id=1,
+        project_service=FakeProjectService(exists=True),
+        audit_service=FakeAuditService(),
+    )
+
+    assert result == [
+        {
+            "audit_id": 7,
+            "project_id": 1,
+            "status": "completed",
+            "score": 88,
+        }
+    ]
