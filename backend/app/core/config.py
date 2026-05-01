@@ -10,7 +10,10 @@ from dotenv import load_dotenv
 ROOT_DIR = Path(__file__).resolve().parents[3]
 ENV_FILE = ROOT_DIR / ".env"
 
-load_dotenv(dotenv_path=ENV_FILE)
+load_dotenv(
+    dotenv_path=ENV_FILE,
+    override=os.getenv("ENVIRONMENT", "development") != "production",
+)
 
 DEFAULT_APP_NAME = "DataGuardian"
 DEFAULT_ENVIRONMENT = "development"
@@ -19,7 +22,7 @@ DEFAULT_API_PREFIX = "/api"
 DEFAULT_SECRET_KEY = "supersecretkey"
 DEFAULT_ALGORITHM = "HS256"
 DEFAULT_ACCESS_TOKEN_EXPIRE_MINUTES = 30
-DEFAULT_DATABASE_URL = "postgresql://dataguardian:dataguardian@localhost:5432/dataguardian"
+DEFAULT_DATABASE_URL = "postgresql://dataguardian:dataguardian@localhost:5434/dataguardian"
 
 
 def _get_bool_env(name: str, default: bool) -> bool:

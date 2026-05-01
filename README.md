@@ -56,6 +56,17 @@ Each audit produces a severity-based score:
 
 ---
 
+## Environment Variables
+
+Create a `.env` file in the project root:
+
+
+APP_NAME=DataGuardian
+ENVIRONMENT=development
+DEBUG=true
+SECRET_KEY=change-this-in-production
+DATABASE_URL=postgresql://dataguardian:dataguardian@localhost:5434/dataguardian
+
 ### 🧾 Audit History
 
 - Stored in PostgreSQL
