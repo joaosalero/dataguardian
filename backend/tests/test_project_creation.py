@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base
+from app.models.user import User
 from app.schemas.project import ProjectCreate
 from app.services.project_service import ProjectService
 
@@ -36,17 +37,23 @@ def db_session() -> Generator[Session, None, None]:
 
 
 def test_project_creation_and_fetch(db_session: Session) -> None:
+    user = User(email="owner@example.com", hashed_password="hashed")
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
     service = ProjectService(db_session)
 
     created_project = service.create_project(
         ProjectCreate(
             name="Security Audit",
             description="Core platform review",
-        )
+        ),
+        user.id,
     )
 
-    fetched_project = service.get_project(created_project.id)
+    fetched_project = service.get_project(created_project.id, user.id)
 
     assert created_project.id > 0
     assert fetched_project.id == created_project.id
     assert fetched_project.name == "Security Audit"
+    assert fetched_project.user_id == user.id

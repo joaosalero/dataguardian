@@ -4,11 +4,15 @@ from fastapi import HTTPException, status
 from app.api.audit_routes import get_audit_history, run_audit
 
 
+class FakeUser:
+    id = 1
+
+
 class FakeProjectService:
     def __init__(self, exists: bool) -> None:
         self.exists = exists
 
-    def get_project(self, project_id: int) -> dict[str, int]:
+    def get_project(self, project_id: int, user_id: int) -> dict[str, int]:
         if not self.exists:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -59,6 +63,7 @@ class FakeAuditService:
 async def test_audit_runs_successfully() -> None:
     result = await run_audit(
         project_id=1,
+        current_user=FakeUser(),
         project_service=FakeProjectService(exists=True),
         audit_service=FakeAuditService(),
     )
@@ -74,6 +79,7 @@ async def test_audit_invalid_project_returns_404() -> None:
     with pytest.raises(HTTPException) as exc_info:
         await run_audit(
             project_id=999,
+            current_user=FakeUser(),
             project_service=FakeProjectService(exists=False),
             audit_service=FakeAuditService(),
         )
@@ -86,6 +92,7 @@ async def test_audit_invalid_project_returns_404() -> None:
 async def test_audit_history_returns_audits() -> None:
     result = await get_audit_history(
         project_id=1,
+        current_user=FakeUser(),
         project_service=FakeProjectService(exists=True),
         audit_service=FakeAuditService(),
     )

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.audit.engine import run_schema_audit
 from app.models.audit_run import AuditRun
 from app.models.finding import Finding
-from app.repositories.project_repository import ProjectRepository
+from app.models.project import Project
 
 
 logger = logging.getLogger(__name__)
@@ -16,10 +16,9 @@ logger = logging.getLogger(__name__)
 class AuditService:
     def __init__(self, db: Session) -> None:
         self.db = db
-        self.project_repository = ProjectRepository(db)
 
     def run_project_audit(self, project_id: int) -> dict[str, int | list[dict[str, str]]]:
-        project = self.project_repository.get_by_id(project_id)
+        project = self.db.get(Project, project_id)
         if project is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

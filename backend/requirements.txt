@@ -6,3 +6,6 @@ httpx
 python-dotenv
 sqlalchemy
 psycopg2-binary
+bcrypt<4
+passlib[bcrypt]
+python-jose[cryptography]

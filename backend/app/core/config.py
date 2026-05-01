@@ -12,6 +12,15 @@ ENV_FILE = ROOT_DIR / ".env"
 
 load_dotenv(dotenv_path=ENV_FILE)
 
+DEFAULT_APP_NAME = "DataGuardian"
+DEFAULT_ENVIRONMENT = "development"
+DEFAULT_DEBUG = True
+DEFAULT_API_PREFIX = "/api"
+DEFAULT_SECRET_KEY = "supersecretkey"
+DEFAULT_ALGORITHM = "HS256"
+DEFAULT_ACCESS_TOKEN_EXPIRE_MINUTES = 30
+DEFAULT_DATABASE_URL = "postgresql://dataguardian:dataguardian@localhost:5432/dataguardian"
+
 
 def _get_bool_env(name: str, default: bool) -> bool:
     raw_value = os.getenv(name)
@@ -23,22 +32,31 @@ def _get_bool_env(name: str, default: bool) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class Settings:
-    app_name: str = "DataGuardian"
-    environment: str = "development"
-    debug: bool = True
-    api_prefix: str = "/api"
-    secret_key: str = "supersecretkey"
-    database_url: str = "postgresql://dataguardian:dataguardian@localhost:5432/dataguardian"
+    app_name: str = DEFAULT_APP_NAME
+    environment: str = DEFAULT_ENVIRONMENT
+    debug: bool = DEFAULT_DEBUG
+    api_prefix: str = DEFAULT_API_PREFIX
+    secret_key: str = DEFAULT_SECRET_KEY
+    algorithm: str = DEFAULT_ALGORITHM
+    access_token_expire_minutes: int = DEFAULT_ACCESS_TOKEN_EXPIRE_MINUTES
+    database_url: str = DEFAULT_DATABASE_URL
 
     @classmethod
     def from_env(cls) -> Settings:
         return cls(
-            app_name=os.getenv("APP_NAME", cls.app_name),
-            environment=os.getenv("ENVIRONMENT", cls.environment),
-            debug=_get_bool_env("DEBUG", cls.debug),
-            api_prefix=os.getenv("API_PREFIX", cls.api_prefix),
-            secret_key=os.getenv("SECRET_KEY", cls.secret_key),
-            database_url=os.getenv("DATABASE_URL", cls.database_url),
+            app_name=os.getenv("APP_NAME", DEFAULT_APP_NAME),
+            environment=os.getenv("ENVIRONMENT", DEFAULT_ENVIRONMENT),
+            debug=_get_bool_env("DEBUG", DEFAULT_DEBUG),
+            api_prefix=os.getenv("API_PREFIX", DEFAULT_API_PREFIX),
+            secret_key=os.getenv("SECRET_KEY", DEFAULT_SECRET_KEY),
+            algorithm=os.getenv("ALGORITHM", DEFAULT_ALGORITHM),
+            access_token_expire_minutes=int(
+                os.getenv(
+                    "ACCESS_TOKEN_EXPIRE_MINUTES",
+                    str(DEFAULT_ACCESS_TOKEN_EXPIRE_MINUTES),
+                )
+            ),
+            database_url=os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL),
         )
 
 

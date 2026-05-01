@@ -10,6 +10,7 @@ from app.api.audit_routes import get_audit_history
 from app.core.database import Base
 from app.models.audit_run import AuditRun
 from app.models.finding import Finding
+from app.models.user import User
 from app.schemas.project import ProjectCreate
 from app.services.audit_service import AuditService
 from app.services.project_service import ProjectService
@@ -40,9 +41,11 @@ def db_session() -> Generator[Session, None, None]:
 
 
 def test_audit_run_persists_audit_and_findings(db_session: Session) -> None:
+    user = create_user(db_session)
     project_service = ProjectService(db_session)
     created_project = project_service.create_project(
-        ProjectCreate(name="Main Project", description="Seed")
+        ProjectCreate(name="Main Project", description="Seed"),
+        user.id,
     )
     service = AuditService(db_session)
 
@@ -68,15 +71,18 @@ def test_audit_run_persists_audit_and_findings(db_session: Session) -> None:
 
 @pytest.mark.asyncio
 async def test_audit_history_endpoint_returns_saved_audits(db_session: Session) -> None:
+    user = create_user(db_session)
     audit_service = AuditService(db_session)
     project_service = ProjectService(db_session)
     created_project = project_service.create_project(
-        ProjectCreate(name="History Project", description="Seed")
+        ProjectCreate(name="History Project", description="Seed"),
+        user.id,
     )
 
     result = audit_service.run_project_audit(project_id=created_project.id)
     history = await get_audit_history(
         project_id=created_project.id,
+        current_user=user,
         project_service=project_service,
         audit_service=audit_service,
     )
@@ -89,3 +95,11 @@ async def test_audit_history_endpoint_returns_saved_audits(db_session: Session) 
             "score": result["score"],
         }
     ]
+
+
+def create_user(db_session: Session) -> User:
+    user = User(email="owner@example.com", hashed_password="hashed")
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user

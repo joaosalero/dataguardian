@@ -4,7 +4,6 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
-from app.models.user import User
 from app.repositories.project_repository import ProjectRepository
 from app.schemas.project import ProjectCreate
 
@@ -17,7 +16,7 @@ class ProjectService:
         self.db = db
         self.repository = ProjectRepository(db)
 
-    def create_project(self, payload: ProjectCreate) -> Project:
+    def create_project(self, payload: ProjectCreate, user_id: int) -> Project:
         name = payload.name.strip()
         if not name:
             raise HTTPException(
@@ -26,16 +25,19 @@ class ProjectService:
             )
 
         description = payload.description.strip() if payload.description else None
-        self._ensure_default_user()
-        project = self.repository.create(name=name, description=description, user_id=1)
+        project = self.repository.create(
+            name=name,
+            description=description,
+            user_id=user_id,
+        )
         logger.info("Project created with ID %s", project.id)
         return project
 
-    def list_projects(self) -> list[Project]:
-        return self.repository.get_all()
+    def list_projects(self, user_id: int) -> list[Project]:
+        return self.repository.get_all_for_user(user_id)
 
-    def get_project(self, project_id: int) -> Project:
-        project = self.repository.get_by_id(project_id)
+    def get_project(self, project_id: int, user_id: int) -> Project:
+        project = self.repository.get_by_id_for_user(project_id, user_id)
         if project is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -44,19 +46,6 @@ class ProjectService:
         logger.info("Project fetched: %s", project.id)
         return project
 
-    def delete_project(self, project_id: int) -> None:
-        project = self.get_project(project_id)
+    def delete_project(self, project_id: int, user_id: int) -> None:
+        project = self.get_project(project_id, user_id)
         self.repository.delete(project)
-
-    def _ensure_default_user(self) -> None:
-        default_user = self.db.get(User, 1)
-        if default_user is not None:
-            return
-
-        self.db.add(
-            User(
-                id=1,
-                email="owner@dataguardian.dev",
-                password_hash="hashed",
-            )
-        )
