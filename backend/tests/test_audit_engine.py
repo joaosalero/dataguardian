@@ -12,7 +12,7 @@ def test_detects_suspicious_password_column() -> None:
     result = run_schema_audit(schema)
 
     assert any(
-        finding["title"] == "Suspicious column detected"
+        finding["title"] == "Sensitive field detected"
         and "password_hash" in finding["description"]
         and finding["severity"] == "HIGH"
         for finding in result["findings"]
@@ -48,7 +48,7 @@ def test_detects_pii_column() -> None:
     result = run_schema_audit(schema)
 
     assert any(
-        finding["title"] == "Possible PII column detected"
+        finding["title"] == "Possible PII field detected"
         and "email_address" in finding["description"]
         and finding["severity"] == "MEDIUM"
         for finding in result["findings"]
@@ -65,7 +65,7 @@ def test_calculates_score_correctly() -> None:
 
     result = run_schema_audit(schema)
 
-    assert result["score"] == 88
+    assert result["score"] == 80
     assert len(result["findings"]) == 3
 
 
@@ -81,3 +81,35 @@ def test_clean_schema_returns_full_score() -> None:
 
     assert result["score"] == 100
     assert result["findings"] == []
+
+
+def test_rule_patterns_detect_multiple_sensitive_fields() -> None:
+    schema = {
+        "integrations": {
+            "columns": ["id", "api_key_value", "access_token"],
+            "primary_key": "id",
+        }
+    }
+
+    result = run_schema_audit(schema)
+
+    sensitive_findings = [
+        finding
+        for finding in result["findings"]
+        if finding["title"] == "Sensitive field detected"
+    ]
+    assert len(sensitive_findings) == 2
+    assert result["score"] == 80
+
+
+def test_score_deducts_points_by_severity() -> None:
+    schema = {
+        "events": {
+            "columns": ["email", "token"],
+            "primary_key": None,
+        }
+    }
+
+    result = run_schema_audit(schema)
+
+    assert result["score"] == 80

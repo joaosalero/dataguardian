@@ -1,8 +1,8 @@
 RISK_POINTS_BY_SEVERITY = {
-    "LOW": 1,
-    "MEDIUM": 3,
-    "HIGH": 6,
-    "CRITICAL": 10,
+    "LOW": 2,
+    "MEDIUM": 5,
+    "HIGH": 10,
+    "CRITICAL": 20,
 }
 
 

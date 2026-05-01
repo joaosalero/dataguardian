@@ -10,15 +10,15 @@ This project focuses on **security, pragmatic software engineering, and automate
 
 Modern applications frequently store sensitive data without proper structural validation or security auditing.
 
-This leads to common issues such as:
+This leads to issues such as:
 
 - Plain-text password storage
 - Exposure of personally identifiable information (PII)
 - Poor database design (e.g., missing primary keys)
 - Lack of continuous auditing
-- Security vulnerabilities going unnoticed
+- Undetected security vulnerabilities
 
-**DataGuardian solves this by providing automated schema analysis and risk assessment.**
+**DataGuardian addresses these problems through automated analysis and risk scoring.**
 
 ---
 
@@ -28,7 +28,7 @@ This leads to common issues such as:
 - Data engineers
 - Security engineers (AppSec / SecOps)
 - Small and mid-sized teams without dedicated security staff
-- Teams needing **fast, automated validation of database structures**
+- Teams needing fast, automated database validation
 
 ---
 
@@ -36,195 +36,153 @@ This leads to common issues such as:
 
 ### 🔍 Automated Schema Audit
 
-Analyzes database-like structures and detects:
+Detects:
 
 - Sensitive fields (`password`, `token`, `api_key`)
-- Potential PII (`email`, `phone`, `cpf`, etc.)
-- Tables without primary keys
+- Potential PII (`email`, `phone`, etc.)
 - Structural anti-patterns
+- Missing primary keys
 
 ---
 
-### 📊 Risk Scoring System
+### 📊 Risk Scoring
 
-Each audit produces a score based on severity:
+Each audit produces a severity-based score:
 
 - LOW
 - MEDIUM
 - HIGH
 - CRITICAL
 
-Provides a quick and actionable overview of system risk.
-
 ---
 
 ### 🧾 Audit History
 
 - Stored in PostgreSQL
-- Enables tracking and evolution over time
-- Foundation for future monitoring features
+- Enables traceability
+- Supports future monitoring features
 
 ---
 
-### 🧠 Audit Engine
+### 🔐 Authentication (JWT)
 
-Custom rule-based engine:
+The system includes **JWT-based authentication**:
 
-- Pattern detection
-- Risk classification
-- Extensible design for future rules
-
----
-
-### 🔌 REST API
-
-Main endpoints:
-
-- Create projects
-- Run audits
-- Retrieve audit history
+- Secure login
+- Token-based access control
+- Protected endpoints
+- User isolation (data scoped per user)
 
 ---
 
 ## 🏗️ Architecture
 
-This project follows a **pragmatic and minimal architecture approach**, intentionally avoiding overengineering.
+The project follows a **pragmatic and minimal architecture approach**, avoiding overengineering.
 
 ### Principles:
 
-- Clear separation of responsibilities
-- Business logic isolated where necessary
+- Clear responsibility separation
 - Low coupling
-- High readability and maintainability
+- High readability
+- Minimal abstraction
 
-### Key Decisions:
+### Design decisions:
 
-- ❌ Avoided excessive layers and abstractions
+- ❌ No unnecessary layers
 - ❌ No premature design patterns
-- ✔️ Optimized for clarity and real-world usage
-- ✔️ Designed to work well with AI-assisted development
+- ✔️ Simple, maintainable structure
+- ✔️ Optimized for AI-assisted development
 
 ---
 
 ## 🧰 Tech Stack
 
-- **Backend:** FastAPI (Python)
+- **Backend:** FastAPI
 - **Database:** PostgreSQL
 - **ORM:** SQLAlchemy
+- **Auth:** JWT (python-jose)
+- **Hashing:** passlib (bcrypt)
 - **Testing:** Pytest
 - **Containerization:** Docker
-- **API:** REST
 
 ---
 
 ## 🚀 Getting Started
 
-### 1. Start the database
+### 1. Start database
 
-```bash
+
 docker compose up -d
-````
-
----
-
-### 2. Run the application
-
-```bash
+2. Run application
 cd backend
 uvicorn app.main:app --reload
-```
+🔐 Authentication Flow
+1. Register (if implemented)
+curl -X POST http://127.0.0.1:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@test.com", "password": "123456"}'
+2. Login
+curl -X POST http://127.0.0.1:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "user@test.com", "password": "123456"}'
 
----
+Response:
 
-### 3. Create a project
-
-```bash
+{
+  "access_token": "YOUR_TOKEN",
+  "token_type": "bearer"
+}
+3. Use authenticated endpoints
+curl http://127.0.0.1:8000/projects \
+  -H "Authorization: Bearer YOUR_TOKEN"
+📡 API Usage
+Create Project
 curl -X POST http://127.0.0.1:8000/projects \
+  -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name": "My Project"}'
-```
-
----
-
-### 4. Run an audit
-
-```bash
-curl -X POST http://127.0.0.1:8000/projects/1/audit/run
-```
-
----
-
-### 5. Check audit history
-
-```bash
-curl http://127.0.0.1:8000/projects/1/audit/history
-```
-
----
-
-## 🧪 Running Tests
-
-```bash
+Run Audit
+curl -X POST http://127.0.0.1:8000/projects/1/audit/run \
+  -H "Authorization: Bearer YOUR_TOKEN"
+Get Audit History
+curl http://127.0.0.1:8000/projects/1/audit/history \
+  -H "Authorization: Bearer YOUR_TOKEN"
+🧪 Tests
 pytest
-```
+🔐 Security Considerations
+Password hashing with bcrypt
+Token-based authentication (JWT)
+Input validation
+Separation of concerns
+No sensitive data stored in plain text
 
----
+Planned improvements:
 
-## 🔐 Security (Current Status)
+Rate limiting
+Role-based access control
+Advanced audit rules
+📈 Roadmap
+ Real database inspection
+ Dashboard (frontend)
+ Integration with dbPilot
+ Exportable reports
+ Continuous monitoring
+💡 Why This Project Matters
 
-The project already considers:
-
-* Input validation
-* Structured architecture
-* Preparation for authentication
-
-### Planned improvements:
-
-* JWT-based authentication
-* Role-based access control
-* API abuse protection (rate limiting)
-
----
-
-## 📈 Roadmap
-
-* [ ] Authentication and user management
-* [ ] Real database schema inspection (not simulated)
-* [ ] Frontend dashboard
-* [ ] Integration with dbPilot
-* [ ] Exportable audit reports
-* [ ] Continuous monitoring
-
----
-
-## 💡 Why This Project Matters
-
-This is not a generic CRUD project.
+This is not a generic CRUD application.
 
 It demonstrates:
 
-* Real-world security concerns
-* Data analysis applied to backend systems
-* Pragmatic architecture (avoiding overengineering)
-* Integration between API, database, and audit logic
-* Awareness of AI-assisted development trade-offs
+Security-first thinking
+Real-world backend design
+Data analysis applied to systems
+Pragmatic architecture (anti-overengineering)
+Awareness of AI-driven development trade-offs
+📌 Technical Notes
+Designed for small teams
+Built for maintainability
+Avoids unnecessary abstraction
+Optimized for clarity and evolution
+👤 Author
 
----
-
-## 📌 Technical Notes
-
-* Built with a focus on clarity over complexity
-* Designed for small teams and real-world use
-* Structured for incremental evolution
-* Prioritizes maintainability and developer efficiency
-
----
-
-## 👤 Author
-
-Developed as a professional portfolio project focused on backend engineering, security, and data analysis.
-
----
-
-```
-
+Developed as a professional backend and security-focused portfolio project.

@@ -1,26 +1,30 @@
-SUSPICIOUS_COLUMN_NAMES = {
-    "password",
-    "senha",
-    "token",
-    "secret",
-    "api_key",
-}
-
-PII_COLUMN_NAMES = {
-    "email",
-    "phone",
-    "telefone",
-    "cpf",
-    "document",
-    "documento",
-}
+COLUMN_RULES = [
+    {
+        "name": "detect_sensitive_field",
+        "patterns": ["password", "senha", "token", "secret", "api_key"],
+        "title": "Sensitive field detected",
+        "severity": "HIGH",
+        "description": "Sensitive field detected",
+        "recommendation": "Review storage and protection controls for sensitive secrets.",
+    },
+    {
+        "name": "detect_pii_field",
+        "patterns": ["email", "phone", "telefone", "cpf", "document", "documento"],
+        "title": "Possible PII field detected",
+        "severity": "MEDIUM",
+        "description": "Possible PII field detected",
+        "recommendation": (
+            "Review masking, encryption, and access controls for personal data."
+        ),
+    },
+]
 
 
 def _normalize_name(value: str) -> str:
     return value.strip().lower()
 
 
-def _contains_keyword(column_name: str, keywords: set[str]) -> str | None:
+def _contains_keyword(column_name: str, keywords: list[str]) -> str | None:
     normalized_column_name = _normalize_name(column_name)
     for keyword in keywords:
         if keyword in normalized_column_name:
@@ -28,26 +32,25 @@ def _contains_keyword(column_name: str, keywords: set[str]) -> str | None:
     return None
 
 
-def check_suspicious_columns(table_name: str, columns: list[str]) -> list[dict[str, str]]:
+def apply_column_rules(table_name: str, columns: list[str]) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
     for column_name in columns:
-        matched_keyword = _contains_keyword(column_name, SUSPICIOUS_COLUMN_NAMES)
-        if matched_keyword is None:
-            continue
+        for rule in COLUMN_RULES:
+            matched_keyword = _contains_keyword(column_name, rule["patterns"])
+            if matched_keyword is None:
+                continue
 
-        findings.append(
-            {
-                "title": "Suspicious column detected",
-                "description": (
-                    f"Table '{table_name}' contains suspicious column "
-                    f"'{column_name}' related to '{matched_keyword}'."
-                ),
-                "severity": "HIGH",
-                "recommendation": (
-                    "Review storage and protection controls for sensitive secrets."
-                ),
-            }
-        )
+            findings.append(
+                {
+                    "title": rule["title"],
+                    "description": (
+                        f"{rule['description']}: table '{table_name}' column "
+                        f"'{column_name}' matched '{matched_keyword}'."
+                    ),
+                    "severity": rule["severity"],
+                    "recommendation": rule["recommendation"],
+                }
+            )
     return findings
 
 
@@ -76,26 +79,3 @@ def check_missing_primary_key(
         ]
 
     return []
-
-
-def check_pii_columns(table_name: str, columns: list[str]) -> list[dict[str, str]]:
-    findings: list[dict[str, str]] = []
-    for column_name in columns:
-        matched_keyword = _contains_keyword(column_name, PII_COLUMN_NAMES)
-        if matched_keyword is None:
-            continue
-
-        findings.append(
-            {
-                "title": "Possible PII column detected",
-                "description": (
-                    f"Table '{table_name}' contains possible PII column "
-                    f"'{column_name}' related to '{matched_keyword}'."
-                ),
-                "severity": "MEDIUM",
-                "recommendation": (
-                    "Review masking, encryption, and access controls for personal data."
-                ),
-            }
-        )
-    return findings
