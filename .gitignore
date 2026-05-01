@@ -1,10 +1,45 @@
-.venv/
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Environment variables
 .env
+.env.*
+
+# IDEs
 .idea/
 .vscode/
+
+# Logs
 *.log
-dist/
+
+# Build / Distribution
 build/
+dist/
+*.egg-info/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Testing / Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Database (local/testing)
 *.sqlite3
+
+# Codex / AI tools
+codex/
+
+# Misc
+*.swp
+*.bak
