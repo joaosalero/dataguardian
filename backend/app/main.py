@@ -3,9 +3,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api.auth_routes import router as auth_router
 from app.api.audit_routes import router as audit_router
 from app.api.project_routes import router as project_router
+from app.auth import router as auth_router
 from app.core.config import settings
 from app.core.database import init_db
 
