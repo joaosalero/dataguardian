@@ -26,14 +26,17 @@ export default function LoginPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Invalid username or password");
+        if (response.status === 401) {
+          throw new Error("Invalid credentials");
+        }
+        throw new Error("Something went wrong. Please try again.");
       }
 
       const data: { access_token: string } = await response.json();
       localStorage.setItem("dataguardian_token", data.access_token);
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       setLoading(false);
     }
@@ -54,6 +57,7 @@ export default function LoginPage() {
             <span className="text-sm font-medium text-gray-700">Username</span>
             <input
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900"
+              disabled={loading}
               value={username}
               onChange={(event) => setUsername(event.target.value)}
               autoComplete="username"
@@ -65,6 +69,7 @@ export default function LoginPage() {
             <span className="text-sm font-medium text-gray-700">Password</span>
             <input
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900"
+              disabled={loading}
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -73,11 +78,15 @@ export default function LoginPage() {
             />
           </label>
 
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {error ? (
+            <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error}
+            </p>
+          ) : null}
 
           <button
             className="w-full rounded-md bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-400"
-            disabled={loading}
+            disabled={loading || !username.trim() || !password}
             type="submit"
           >
             {loading ? "Signing in..." : "Sign in"}

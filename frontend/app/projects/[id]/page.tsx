@@ -39,6 +39,7 @@ export default function ProjectPage() {
   const [history, setHistory] = useState<AuditRun[]>([]);
   const [lastAudit, setLastAudit] = useState<AuditResult | null>(null);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
 
@@ -49,6 +50,7 @@ export default function ProjectPage() {
   async function apiGet<T>(path: string): Promise<T> {
     const token = getToken();
     if (!token) {
+      localStorage.removeItem("dataguardian_token");
       router.push("/login");
       throw new Error("Missing token");
     }
@@ -64,7 +66,10 @@ export default function ProjectPage() {
     }
 
     if (!response.ok) {
-      throw new Error("Request failed");
+      if (response.status === 404) {
+        throw new Error("Project not found");
+      }
+      throw new Error("Something went wrong while loading project data.");
     }
 
     return response.json();
@@ -72,6 +77,7 @@ export default function ProjectPage() {
 
   async function loadProject() {
     setError("");
+    setMessage("");
     const [projectData, historyData] = await Promise.all([
       apiGet<Project>(`/projects/${params.id}`),
       apiGet<AuditRun[]>(`/projects/${params.id}/audit/history`),
@@ -83,7 +89,7 @@ export default function ProjectPage() {
   useEffect(() => {
     loadProject()
       .catch((err) =>
-        setError(err instanceof Error ? err.message : "Could not load project"),
+        setError(err instanceof Error ? err.message : "Something went wrong."),
       )
       .finally(() => setLoading(false));
   }, [params.id]);
@@ -91,35 +97,51 @@ export default function ProjectPage() {
   async function runAudit() {
     const token = getToken();
     if (!token) {
+      localStorage.removeItem("dataguardian_token");
       router.push("/login");
       return;
     }
 
     setRunning(true);
     setError("");
-    const response = await fetch(
-      `${API_BASE_URL}/projects/${params.id}/audit/run`,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      },
-    );
+    setMessage("");
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/projects/${params.id}/audit/run`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
 
-    if (!response.ok) {
-      setError("Could not run audit");
+      if (response.status === 401) {
+        localStorage.removeItem("dataguardian_token");
+        router.push("/login");
+        return;
+      }
+
+      if (!response.ok) {
+        setError("Could not run audit. Please try again.");
+        return;
+      }
+
+      setLastAudit(await response.json());
+      await loadProject();
+      setMessage("Audit completed.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
       setRunning(false);
-      return;
     }
-
-    setLastAudit(await response.json());
-    await loadProject();
-    setRunning(false);
   }
 
   return (
     <main className="min-h-screen px-6 py-8">
       <div className="mx-auto max-w-5xl">
-        <Link className="text-sm font-medium text-gray-600 hover:text-gray-950" href="/dashboard">
+        <Link
+          className="text-sm font-medium text-gray-600 hover:text-gray-950"
+          href="/dashboard"
+        >
           Back to projects
         </Link>
 
@@ -146,7 +168,17 @@ export default function ProjectPage() {
               </button>
             </header>
 
-            {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
+            {message ? (
+              <p className="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">
+                {message}
+              </p>
+            ) : null}
+
+            {error ? (
+              <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+                {error}
+              </p>
+            ) : null}
 
             {lastAudit ? (
               <section className="mb-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
@@ -160,7 +192,10 @@ export default function ProjectPage() {
                 </div>
                 <div className="space-y-3">
                   {lastAudit.findings.map((finding, index) => (
-                    <div className="rounded-md border border-gray-200 p-3" key={index}>
+                    <div
+                      className="rounded-md border border-gray-200 p-3"
+                      key={index}
+                    >
                       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                         <h3 className="text-sm font-medium text-gray-950">
                           {finding.title}
@@ -189,7 +224,10 @@ export default function ProjectPage() {
               ) : (
                 <div className="divide-y divide-gray-200">
                   {history.map((audit) => (
-                    <div className="flex items-center justify-between p-5" key={audit.audit_id}>
+                    <div
+                      className="flex items-center justify-between p-5"
+                      key={audit.audit_id}
+                    >
                       <div>
                         <p className="text-sm font-medium text-gray-950">
                           Audit #{audit.audit_id}

@@ -20,7 +20,9 @@ export default function DashboardPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
 
   function getToken() {
     return localStorage.getItem("dataguardian_token");
@@ -29,6 +31,7 @@ export default function DashboardPage() {
   async function loadProjects() {
     const token = getToken();
     if (!token) {
+      localStorage.removeItem("dataguardian_token");
       router.push("/login");
       return;
     }
@@ -45,7 +48,7 @@ export default function DashboardPage() {
     }
 
     if (!response.ok) {
-      throw new Error("Could not load projects");
+      throw new Error("Something went wrong while loading projects.");
     }
 
     setProjects(await response.json());
@@ -54,7 +57,7 @@ export default function DashboardPage() {
   useEffect(() => {
     loadProjects()
       .catch((err) =>
-        setError(err instanceof Error ? err.message : "Could not load projects"),
+        setError(err instanceof Error ? err.message : "Something went wrong."),
       )
       .finally(() => setLoading(false));
   }, []);
@@ -63,31 +66,47 @@ export default function DashboardPage() {
     event.preventDefault();
     const token = getToken();
     if (!token) {
+      localStorage.removeItem("dataguardian_token");
       router.push("/login");
       return;
     }
 
     setError("");
-    const response = await fetch(`${API_BASE_URL}/projects`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name,
-        description: description || null,
-      }),
-    });
+    setMessage("");
+    setCreating(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/projects`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name,
+          description: description || null,
+        }),
+      });
 
-    if (!response.ok) {
-      setError("Could not create project");
-      return;
+      if (response.status === 401) {
+        localStorage.removeItem("dataguardian_token");
+        router.push("/login");
+        return;
+      }
+
+      if (!response.ok) {
+        setError("Could not create project. Check the name and try again.");
+        return;
+      }
+
+      setName("");
+      setDescription("");
+      setMessage("Project created.");
+      await loadProjects();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setCreating(false);
     }
-
-    setName("");
-    setDescription("");
-    await loadProjects();
   }
 
   function logout() {
@@ -118,9 +137,13 @@ export default function DashboardPage() {
           <h2 className="mb-4 text-base font-semibold text-gray-950">
             New project
           </h2>
-          <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]" onSubmit={createProject}>
+          <form
+            className="grid gap-3 md:grid-cols-[1fr_1fr_auto]"
+            onSubmit={createProject}
+          >
             <input
               className="rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900"
+              disabled={creating}
               placeholder="Project name"
               value={name}
               onChange={(event) => setName(event.target.value)}
@@ -128,20 +151,32 @@ export default function DashboardPage() {
             />
             <input
               className="rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900"
+              disabled={creating}
               placeholder="Description"
               value={description}
               onChange={(event) => setDescription(event.target.value)}
             />
             <button
-              className="rounded-md bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+              className="rounded-md bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+              disabled={creating || !name.trim()}
               type="submit"
             >
-              Create
+              {creating ? "Creating..." : "Create"}
             </button>
           </form>
         </section>
 
-        {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
+        {message ? (
+          <p className="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">
+            {message}
+          </p>
+        ) : null}
+
+        {error ? (
+          <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </p>
+        ) : null}
 
         <section className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
           {loading ? (

@@ -25,11 +25,14 @@ class FakeAuditService:
     def run_project_audit(self, project_id: int) -> dict[str, int | list[dict[str, str]]]:
         return {
             "audit_id": 7,
-            "score": 88,
+            "score": 80,
             "findings": [
                 {
-                    "title": "Suspicious column detected",
-                    "description": "Table 'users' contains suspicious column 'password'.",
+                    "title": "Sensitive field detected",
+                    "description": (
+                        "Sensitive field detected: table 'users' column "
+                        "'password' matched 'password'."
+                    ),
                     "severity": "HIGH",
                     "recommendation": "Review storage and protection controls.",
                 },
@@ -40,8 +43,11 @@ class FakeAuditService:
                     "recommendation": "Add a primary key.",
                 },
                 {
-                    "title": "Possible PII column detected",
-                    "description": "Table 'users' contains possible PII column 'email'.",
+                    "title": "Possible PII field detected",
+                    "description": (
+                        "Possible PII field detected: table 'users' column "
+                        "'email' matched 'email'."
+                    ),
                     "severity": "MEDIUM",
                     "recommendation": "Review personal data controls.",
                 },
@@ -54,7 +60,7 @@ class FakeAuditService:
                 "audit_id": 7,
                 "project_id": project_id,
                 "status": "completed",
-                "score": 88,
+                "score": 80,
             }
         ]
 
@@ -68,7 +74,7 @@ async def test_audit_runs_successfully() -> None:
         audit_service=FakeAuditService(),
     )
 
-    assert result["score"] == 88
+    assert result["score"] == 80
     assert result["audit_id"] == 7
     assert isinstance(result["findings"], list)
     assert len(result["findings"]) == 3
@@ -102,6 +108,6 @@ async def test_audit_history_returns_audits() -> None:
             "audit_id": 7,
             "project_id": 1,
             "status": "completed",
-            "score": 88,
+            "score": 80,
         }
     ]
