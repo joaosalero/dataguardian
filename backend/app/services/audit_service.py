@@ -18,6 +18,12 @@ class AuditService:
         self.db = db
 
     def run_project_audit(self, project_id: int) -> dict[str, int | list[dict[str, str]]]:
+        """Run the current rule set and persist the result for audit history.
+
+        The schema is simulated for now; live database introspection belongs in a
+        future change because it affects permissions, connection handling, and
+        data exposure risk.
+        """
         project = self.db.get(Project, project_id)
         if project is None:
             logger.warning("Audit failed: project not found project_id=%s", project_id)

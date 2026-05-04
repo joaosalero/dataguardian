@@ -3,6 +3,7 @@ from app.audit.scoring import calculate_score
 
 
 def run_schema_audit(schema: dict) -> dict[str, int | list[dict[str, str]]]:
+    """Apply deterministic schema rules without connecting to a live database."""
     findings: list[dict[str, str]] = []
 
     for table_name, table_definition in schema.items():

@@ -19,7 +19,19 @@ async def get_project_service(db: Session = Depends(get_db)) -> ProjectService:
     return ProjectService(db)
 
 
-@router.post("/{project_id}/audit/run")
+@router.post(
+    "/{project_id}/audit/run",
+    summary="Run project audit",
+    description=(
+        "Runs the current audit rules for a project owned by the authenticated user "
+        "and stores the audit result."
+    ),
+    responses={
+        200: {"description": "Audit completed."},
+        401: {"description": "Missing or invalid bearer token."},
+        404: {"description": "Project not found or not accessible."},
+    },
+)
 async def run_audit(
     project_id: int,
     current_user: User = Depends(get_current_user),
@@ -30,7 +42,16 @@ async def run_audit(
     return audit_service.run_project_audit(project_id)
 
 
-@router.get("/{project_id}/audit/history")
+@router.get(
+    "/{project_id}/audit/history",
+    summary="Get audit history",
+    description="Returns previous audit runs for a project owned by the authenticated user.",
+    responses={
+        200: {"description": "Audit history for the project."},
+        401: {"description": "Missing or invalid bearer token."},
+        404: {"description": "Project not found or not accessible."},
+    },
+)
 async def get_audit_history(
     project_id: int,
     current_user: User = Depends(get_current_user),

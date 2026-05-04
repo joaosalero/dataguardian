@@ -22,11 +22,23 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    logger.info("Application startup started: app=%s", settings.app_name)
     init_db()
+    logger.info("Application startup completed")
     yield
 
 
-app = FastAPI(title=settings.app_name, lifespan=lifespan)
+# CORS is intentionally scoped to local development frontend origins.
+# Credentials require explicit origins; avoid using "*" with bearer-token flows.
+app = FastAPI(
+    title=settings.app_name,
+    description=(
+        "DataGuardian API for authenticated project management and "
+        "database security audit workflows."
+    ),
+    version="0.1.0",
+    lifespan=lifespan,
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -44,6 +56,7 @@ app.include_router(audit_router)
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
+    """Log method/path/status only; headers, query strings, and bodies may be sensitive."""
     logger.info("Request started: %s %s", request.method, request.url.path)
     response = await call_next(request)
     logger.info(
@@ -57,13 +70,24 @@ async def log_requests(request: Request, call_next):
 
 @app.exception_handler(Exception)
 async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
-    logger.exception("Unhandled exception during %s %s", request.method, request.url.path)
+    logger.error(
+        "Unhandled exception during %s %s exception_type=%s",
+        request.method,
+        request.url.path,
+        exc.__class__.__name__,
+    )
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error"},
     )
 
 
-@app.get("/health")
+@app.get(
+    "/health",
+    tags=["health"],
+    summary="Check API health",
+    description="Returns a minimal readiness response without exposing configuration.",
+    response_description="API health status.",
+)
 async def health_check() -> dict[str, str]:
     return {"status": "ok"}

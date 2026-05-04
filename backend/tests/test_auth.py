@@ -92,7 +92,7 @@ async def test_invalid_login_returns_401() -> None:
         )
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "Invalid username or password"
+    assert response.json()["detail"] == "Invalid credentials"
 
 
 @pytest.mark.asyncio
@@ -117,6 +117,29 @@ async def test_login_logs_success_and_failure(caplog: pytest.LogCaptureFixture) 
     assert failure_response.status_code == 401
     assert "User login succeeded" in caplog.text
     assert "User login failed" in caplog.text
+    assert "owner@example.com" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_login_uses_same_error_for_missing_user_and_bad_password() -> None:
+    create_user("owner@example.com")
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        wrong_password_response = await client.post(
+            "/auth/login",
+            json={"username": "owner@example.com", "password": "wrong-password"},
+        )
+        missing_user_response = await client.post(
+            "/auth/login",
+            json={"username": "missing@example.com", "password": "wrong-password"},
+        )
+
+    assert wrong_password_response.status_code == 401
+    assert missing_user_response.status_code == 401
+    assert wrong_password_response.json() == missing_user_response.json()
 
 
 @pytest.mark.asyncio

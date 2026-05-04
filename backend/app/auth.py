@@ -47,14 +47,17 @@ class UserResponse(BaseModel):
 
 
 def hash_password(password: str) -> str:
+    """Hash a plaintext password for storage; callers must never log the result."""
     return pwd_context.hash(password)
 
 
 def verify_password(plain: str, hashed: str) -> bool:
+    """Verify a password without exposing whether the user lookup or hash check failed."""
     return pwd_context.verify(plain, hashed)
 
 
 def create_access_token(data: dict[str, Any]) -> str:
+    """Create a short-lived signed JWT containing only non-sensitive claims."""
     expires_at = datetime.now(timezone.utc) + timedelta(
         minutes=settings.access_token_expire_minutes
     )
@@ -66,6 +69,7 @@ async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
+    """Decode the bearer token and load the user for protected routes."""
     try:
         payload = jwt.decode(
             token,
@@ -89,15 +93,27 @@ async def get_current_user(
     return user
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+    summary="Authenticate user",
+    description=(
+        "Validates credentials and returns a bearer token. Failure responses are "
+        "generic to avoid account enumeration."
+    ),
+    responses={
+        200: {"description": "Authentication succeeded."},
+        401: {"description": "Credentials are invalid."},
+    },
+)
 async def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
     username = payload.username.strip().lower()
     user = db.query(User).filter(User.email == username).one_or_none()
     if user is None or not verify_password(payload.password, user.hashed_password):
-        logger.warning("User login failed: username=%s", username)
+        logger.warning("User login failed")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password",
+            detail="Invalid credentials",
         )
 
     token = create_access_token({"user_id": user.id})
@@ -105,7 +121,16 @@ async def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenRe
     return TokenResponse(access_token=token)
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get(
+    "/me",
+    response_model=UserResponse,
+    summary="Get current user",
+    description="Returns the authenticated user's safe profile fields.",
+    responses={
+        200: {"description": "Current user profile."},
+        401: {"description": "Missing or invalid bearer token."},
+    },
+)
 async def read_current_user(
     current_user: User = Depends(get_current_user),
 ) -> User:

@@ -15,7 +15,13 @@ async def get_project_service(db: Session = Depends(get_db)) -> ProjectService:
     return ProjectService(db)
 
 
-@router.get("", response_model=list[ProjectResponse])
+@router.get(
+    "",
+    response_model=list[ProjectResponse],
+    summary="List projects",
+    description="Lists projects owned by the authenticated user.",
+    responses={401: {"description": "Missing or invalid bearer token."}},
+)
 async def list_projects(
     current_user: User = Depends(get_current_user),
     service: ProjectService = Depends(get_project_service),
@@ -27,6 +33,13 @@ async def list_projects(
     "",
     response_model=ProjectResponse,
     status_code=status.HTTP_201_CREATED,
+    summary="Create project",
+    description="Creates a project scoped to the authenticated user.",
+    responses={
+        201: {"description": "Project created."},
+        400: {"description": "Project input is invalid."},
+        401: {"description": "Missing or invalid bearer token."},
+    },
 )
 async def create_project(
     payload: ProjectCreate,
@@ -36,7 +49,16 @@ async def create_project(
     return service.create_project(payload, current_user.id)
 
 
-@router.get("/{project_id}", response_model=ProjectResponse)
+@router.get(
+    "/{project_id}",
+    response_model=ProjectResponse,
+    summary="Get project",
+    description="Returns one project only when it belongs to the authenticated user.",
+    responses={
+        401: {"description": "Missing or invalid bearer token."},
+        404: {"description": "Project not found or not accessible."},
+    },
+)
 async def get_project(
     project_id: int,
     current_user: User = Depends(get_current_user),
@@ -45,7 +67,17 @@ async def get_project(
     return service.get_project(project_id, current_user.id)
 
 
-@router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{project_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete project",
+    description="Deletes a project owned by the authenticated user.",
+    responses={
+        204: {"description": "Project deleted."},
+        401: {"description": "Missing or invalid bearer token."},
+        404: {"description": "Project not found or not accessible."},
+    },
+)
 async def delete_project(
     project_id: int,
     current_user: User = Depends(get_current_user),

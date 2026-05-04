@@ -38,6 +38,11 @@ class ProjectService:
         return self.repository.get_all_for_user(user_id)
 
     def get_project(self, project_id: int, user_id: int) -> Project:
+        """Return a project only when it belongs to the current user.
+
+        Returning 404 for both missing and unauthorized projects avoids exposing
+        whether another user's project ID exists.
+        """
         project = self.repository.get_by_id_for_user(project_id, user_id)
         if project is None:
             logger.warning(
