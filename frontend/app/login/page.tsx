@@ -6,6 +6,26 @@ import { useRouter } from "next/navigation";
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
+async function readLoginError(response: Response) {
+  const responseText = await response.text();
+  console.error("Login failed", response.status, responseText);
+
+  if (!responseText) {
+    return "Something went wrong. Please try again.";
+  }
+
+  try {
+    const parsed = JSON.parse(responseText) as { detail?: unknown };
+    if (typeof parsed.detail === "string") {
+      return parsed.detail;
+    }
+  } catch {
+    return responseText;
+  }
+
+  return "Something went wrong. Please try again.";
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
@@ -27,16 +47,24 @@ export default function LoginPage() {
 
       if (!response.ok) {
         if (response.status === 401) {
-          throw new Error("Invalid credentials");
+          throw new Error(await readLoginError(response));
         }
-        throw new Error("Something went wrong. Please try again.");
+        throw new Error(await readLoginError(response));
       }
 
       const data: { access_token: string } = await response.json();
+      if (!data.access_token) {
+        throw new Error("Login response did not include an access token.");
+      }
       localStorage.setItem("dataguardian_token", data.access_token);
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      console.error("Login request failed", err);
+      if (err instanceof TypeError) {
+        setError("Cannot reach the API. Check that the backend is running.");
+      } else {
+        setError(err instanceof Error ? err.message : "Something went wrong.");
+      }
     } finally {
       setLoading(false);
     }

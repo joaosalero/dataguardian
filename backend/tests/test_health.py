@@ -22,6 +22,26 @@ async def test_health_check_returns_ok() -> None:
 
 
 @pytest.mark.asyncio
+async def test_cors_allows_frontend_login_requests() -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.options(
+            "/auth/login",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert response.headers["access-control-allow-credentials"] == "true"
+
+
+@pytest.mark.asyncio
 async def test_unhandled_errors_return_safe_response() -> None:
     async with AsyncClient(
         transport=ASGITransport(app=app, raise_app_exceptions=False),
