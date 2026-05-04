@@ -24,25 +24,13 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
 
-  function getToken() {
-    return localStorage.getItem("dataguardian_token");
-  }
-
   async function loadProjects() {
-    const token = getToken();
-    if (!token) {
-      localStorage.removeItem("dataguardian_token");
-      router.push("/login");
-      return;
-    }
-
     setError("");
     const response = await fetch(`${API_BASE_URL}/projects`, {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
     });
 
     if (response.status === 401) {
-      localStorage.removeItem("dataguardian_token");
       router.push("/login");
       return;
     }
@@ -64,12 +52,6 @@ export default function DashboardPage() {
 
   async function createProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const token = getToken();
-    if (!token) {
-      localStorage.removeItem("dataguardian_token");
-      router.push("/login");
-      return;
-    }
 
     setError("");
     setMessage("");
@@ -77,8 +59,8 @@ export default function DashboardPage() {
     try {
       const response = await fetch(`${API_BASE_URL}/projects`, {
         method: "POST",
+        credentials: "include",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -88,7 +70,6 @@ export default function DashboardPage() {
       });
 
       if (response.status === 401) {
-        localStorage.removeItem("dataguardian_token");
         router.push("/login");
         return;
       }
@@ -109,8 +90,11 @@ export default function DashboardPage() {
     }
   }
 
-  function logout() {
-    localStorage.removeItem("dataguardian_token");
+  async function logout() {
+    await fetch(`${API_BASE_URL}/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => undefined);
     router.push("/login");
   }
 

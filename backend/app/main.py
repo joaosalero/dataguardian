@@ -57,6 +57,13 @@ app.include_router(audit_router)
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     """Log method/path/status only; headers, query strings, and bodies may be sensitive."""
+    forwarded_proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    if settings.is_production and forwarded_proto != "https":
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "HTTPS is required"},
+        )
+
     logger.info("Request started: %s %s", request.method, request.url.path)
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"

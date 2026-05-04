@@ -43,24 +43,12 @@ export default function ProjectPage() {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
 
-  function getToken() {
-    return localStorage.getItem("dataguardian_token");
-  }
-
   async function apiGet<T>(path: string): Promise<T> {
-    const token = getToken();
-    if (!token) {
-      localStorage.removeItem("dataguardian_token");
-      router.push("/login");
-      throw new Error("Missing token");
-    }
-
     const response = await fetch(`${API_BASE_URL}${path}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
     });
 
     if (response.status === 401) {
-      localStorage.removeItem("dataguardian_token");
       router.push("/login");
       throw new Error("Session expired");
     }
@@ -95,13 +83,6 @@ export default function ProjectPage() {
   }, [params.id]);
 
   async function runAudit() {
-    const token = getToken();
-    if (!token) {
-      localStorage.removeItem("dataguardian_token");
-      router.push("/login");
-      return;
-    }
-
     setRunning(true);
     setError("");
     setMessage("");
@@ -110,12 +91,11 @@ export default function ProjectPage() {
         `${API_BASE_URL}/projects/${params.id}/audit/run`,
         {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
         },
       );
 
       if (response.status === 401) {
-        localStorage.removeItem("dataguardian_token");
         router.push("/login");
         return;
       }

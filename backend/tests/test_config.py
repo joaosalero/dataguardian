@@ -35,5 +35,14 @@ def test_development_allows_local_default_secret(monkeypatch: pytest.MonkeyPatch
 
     local_settings = Settings.from_env()
 
-    assert local_settings.environment == "development"
+    assert local_settings.environment == "dev"
     assert len(local_settings.secret_key) >= 32
+
+
+def test_production_requires_fernet_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "prod")
+    monkeypatch.setenv("SECRET_KEY", "a-production-secret-key-with-safe-length")
+    monkeypatch.delenv("FERNET_KEY", raising=False)
+
+    with pytest.raises(ValueError, match="FERNET_KEY"):
+        Settings.from_env()

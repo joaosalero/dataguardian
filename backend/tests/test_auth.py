@@ -4,11 +4,13 @@ import logging
 import app.models
 import pytest
 from httpx import ASGITransport, AsyncClient
+from jose import jwt
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.auth import hash_password
+from app.auth import create_access_token, hash_password, verify_password
+from app.core.config import settings
 from app.core.database import Base, get_db
 from app.main import app
 from app.models.user import User
@@ -48,15 +50,20 @@ async def login_user(
         json={"username": email, "password": "strong-password"},
     )
     assert login_response.status_code == 200
-    token = login_response.json()["access_token"]
+    assert login_response.json() == {"message": "Authenticated"}
+    token = login_response.cookies.get(settings.auth_cookie_name)
     assert token
-    return token
+    return f"{settings.auth_cookie_name}={token}"
 
 
 def create_user(email: str) -> User:
     db = TestingSessionLocal()
     try:
-        user = User(email=email, hashed_password=hash_password("strong-password"))
+        user = User(
+            email=email,
+            encrypted_email=None,
+            hashed_password=hash_password("strong-password"),
+        )
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -66,16 +73,117 @@ def create_user(email: str) -> User:
 
 
 @pytest.mark.asyncio
-async def test_login_returns_jwt() -> None:
+async def test_login_sets_httponly_session_cookie() -> None:
     create_user("owner@example.com")
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://testserver",
     ) as client:
-        token = await login_user(client)
+        cookie_header = await login_user(client)
 
-    assert isinstance(token, str)
+    assert settings.auth_cookie_name in cookie_header
+
+
+@pytest.mark.asyncio
+async def test_login_cookie_does_not_expose_token_in_body() -> None:
+    create_user("owner@example.com")
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post(
+            "/auth/login",
+            json={"username": "owner@example.com", "password": "strong-password"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"message": "Authenticated"}
+    assert "access_token" not in response.text
+    assert "httponly" in response.headers["set-cookie"].lower()
+
+
+def test_password_hashing_uses_argon2() -> None:
+    hashed_password = hash_password("StrongPassword123")
+
+    assert hashed_password.startswith("$argon2")
+    assert "StrongPassword123" not in hashed_password
+    assert verify_password("StrongPassword123", hashed_password)
+    assert not verify_password("wrong-password", hashed_password)
+
+
+def test_jwt_contains_hardened_claims() -> None:
+    token = create_access_token({"sub": 123})
+    payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+
+    assert payload["sub"] == "123"
+    assert "exp" in payload
+    assert "iat" in payload
+    assert "user_id" not in payload
+
+
+@pytest.mark.asyncio
+async def test_register_creates_argon2_user_with_encrypted_email() -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post(
+            "/auth/register",
+            json={"username": "new@example.com", "password": "StrongPass123"},
+        )
+
+    assert response.status_code == 201
+    assert response.json()["email"] == "new@example.com"
+
+    db = TestingSessionLocal()
+    try:
+        user = db.query(User).filter(User.email == "new@example.com").one()
+        assert user.hashed_password.startswith("$argon2")
+        assert user.encrypted_email
+        assert user.encrypted_email != user.email
+    finally:
+        db.close()
+
+
+@pytest.mark.asyncio
+async def test_register_rejects_weak_password_and_duplicate_user() -> None:
+    create_user("owner@example.com")
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        weak_response = await client.post(
+            "/auth/register",
+            json={"username": "weak@example.com", "password": "weak"},
+        )
+        duplicate_response = await client.post(
+            "/auth/register",
+            json={"username": "owner@example.com", "password": "StrongPass123"},
+        )
+
+    assert weak_response.status_code == 400
+    assert duplicate_response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_bearer_fallback_still_supports_api_clients() -> None:
+    user = create_user("owner@example.com")
+    token = create_access_token({"sub": user.id})
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get(
+            "/auth/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["email"] == "owner@example.com"
 
 
 @pytest.mark.asyncio
@@ -150,10 +258,9 @@ async def test_auth_me_returns_current_user() -> None:
         transport=ASGITransport(app=app),
         base_url="http://testserver",
     ) as client:
-        token = await login_user(client)
+        await login_user(client)
         response = await client.get(
             "/auth/me",
-            headers={"Authorization": f"Bearer {token}"},
         )
 
     assert response.status_code == 200
@@ -192,12 +299,12 @@ async def test_project_routes_are_limited_to_current_user() -> None:
         transport=ASGITransport(app=app),
         base_url="http://testserver",
     ) as client:
-        owner_token = await login_user(client, "owner@example.com")
-        other_token = await login_user(client, "other@example.com")
+        owner_cookie = await login_user(client, "owner@example.com")
+        other_cookie = await login_user(client, "other@example.com")
 
         create_response = await client.post(
             "/projects",
-            headers={"Authorization": f"Bearer {owner_token}"},
+            headers={"Cookie": owner_cookie},
             json={"name": "Private Project", "description": "Sensitive"},
         )
         assert create_response.status_code == 201
@@ -205,15 +312,15 @@ async def test_project_routes_are_limited_to_current_user() -> None:
 
         owner_list_response = await client.get(
             "/projects",
-            headers={"Authorization": f"Bearer {owner_token}"},
+            headers={"Cookie": owner_cookie},
         )
         other_list_response = await client.get(
             "/projects",
-            headers={"Authorization": f"Bearer {other_token}"},
+            headers={"Cookie": other_cookie},
         )
         other_get_response = await client.get(
             f"/projects/{project_id}",
-            headers={"Authorization": f"Bearer {other_token}"},
+            headers={"Cookie": other_cookie},
         )
 
     assert len(owner_list_response.json()) == 1
@@ -229,10 +336,10 @@ async def test_project_create_rejects_empty_name() -> None:
         transport=ASGITransport(app=app),
         base_url="http://testserver",
     ) as client:
-        token = await login_user(client, "owner@example.com")
+        cookie = await login_user(client, "owner@example.com")
         response = await client.post(
             "/projects",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Cookie": cookie},
             json={"name": "   ", "description": "No name"},
         )
 
@@ -249,26 +356,26 @@ async def test_project_list_returns_only_current_user_projects() -> None:
         transport=ASGITransport(app=app),
         base_url="http://testserver",
     ) as client:
-        owner_token = await login_user(client, "owner@example.com")
-        other_token = await login_user(client, "other@example.com")
+        owner_cookie = await login_user(client, "owner@example.com")
+        other_cookie = await login_user(client, "other@example.com")
 
         owner_project_response = await client.post(
             "/projects",
-            headers={"Authorization": f"Bearer {owner_token}"},
+            headers={"Cookie": owner_cookie},
             json={"name": "Owner Project"},
         )
         other_project_response = await client.post(
             "/projects",
-            headers={"Authorization": f"Bearer {other_token}"},
+            headers={"Cookie": other_cookie},
             json={"name": "Other Project"},
         )
         owner_list_response = await client.get(
             "/projects",
-            headers={"Authorization": f"Bearer {owner_token}"},
+            headers={"Cookie": owner_cookie},
         )
         other_list_response = await client.get(
             "/projects",
-            headers={"Authorization": f"Bearer {other_token}"},
+            headers={"Cookie": other_cookie},
         )
 
     assert owner_project_response.status_code == 201
@@ -290,12 +397,12 @@ async def test_audit_routes_are_limited_to_project_owner() -> None:
         transport=ASGITransport(app=app),
         base_url="http://testserver",
     ) as client:
-        owner_token = await login_user(client, "owner@example.com")
-        other_token = await login_user(client, "other@example.com")
+        owner_cookie = await login_user(client, "owner@example.com")
+        other_cookie = await login_user(client, "other@example.com")
 
         create_response = await client.post(
             "/projects",
-            headers={"Authorization": f"Bearer {owner_token}"},
+            headers={"Cookie": owner_cookie},
             json={"name": "Audit Project"},
         )
         assert create_response.status_code == 201
@@ -303,19 +410,19 @@ async def test_audit_routes_are_limited_to_project_owner() -> None:
 
         owner_audit_response = await client.post(
             f"/projects/{project_id}/audit/run",
-            headers={"Authorization": f"Bearer {owner_token}"},
+            headers={"Cookie": owner_cookie},
         )
         owner_history_response = await client.get(
             f"/projects/{project_id}/audit/history",
-            headers={"Authorization": f"Bearer {owner_token}"},
+            headers={"Cookie": owner_cookie},
         )
         other_audit_response = await client.post(
             f"/projects/{project_id}/audit/run",
-            headers={"Authorization": f"Bearer {other_token}"},
+            headers={"Cookie": other_cookie},
         )
         other_history_response = await client.get(
             f"/projects/{project_id}/audit/history",
-            headers={"Authorization": f"Bearer {other_token}"},
+            headers={"Cookie": other_cookie},
         )
 
     assert owner_audit_response.status_code == 200
@@ -335,21 +442,21 @@ async def test_audit_run_and_history_flow() -> None:
         transport=ASGITransport(app=app),
         base_url="http://testserver",
     ) as client:
-        token = await login_user(client, "owner@example.com")
+        cookie = await login_user(client, "owner@example.com")
         create_response = await client.post(
             "/projects",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Cookie": cookie},
             json={"name": "Audit Project"},
         )
         project_id = create_response.json()["id"]
 
         audit_response = await client.post(
             f"/projects/{project_id}/audit/run",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Cookie": cookie},
         )
         history_response = await client.get(
             f"/projects/{project_id}/audit/history",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Cookie": cookie},
         )
 
     assert audit_response.status_code == 200
@@ -374,10 +481,10 @@ async def test_audit_invalid_project_returns_404() -> None:
         transport=ASGITransport(app=app),
         base_url="http://testserver",
     ) as client:
-        token = await login_user(client, "owner@example.com")
+        cookie = await login_user(client, "owner@example.com")
         response = await client.post(
             "/projects/999/audit/run",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Cookie": cookie},
         )
 
     assert response.status_code == 404

@@ -6,6 +6,5 @@ httpx
 python-dotenv
 sqlalchemy
 psycopg2-binary
-bcrypt<4
-passlib[bcrypt]
+argon2-cffi
 python-jose[cryptography]

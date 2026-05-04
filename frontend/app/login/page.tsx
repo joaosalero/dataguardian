@@ -41,6 +41,7 @@ export default function LoginPage() {
     try {
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
@@ -52,11 +53,6 @@ export default function LoginPage() {
         throw new Error(await readLoginError(response));
       }
 
-      const data: { access_token: string } = await response.json();
-      if (!data.access_token) {
-        throw new Error("Login response did not include an access token.");
-      }
-      localStorage.setItem("dataguardian_token", data.access_token);
       router.push("/dashboard");
     } catch (err) {
       console.error("Login request failed", err);

@@ -4,6 +4,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
+from app.core.config import settings
 
 
 @app.get("/test-unhandled-error")
@@ -34,6 +35,23 @@ async def test_health_check_includes_security_headers() -> None:
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-frame-options"] == "DENY"
     assert response.headers["referrer-policy"] == "no-referrer"
+
+
+@pytest.mark.asyncio
+async def test_production_rejects_plain_http() -> None:
+    original_environment = settings.environment
+    object.__setattr__(settings, "environment", "prod")
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as client:
+            response = await client.get("/health")
+    finally:
+        object.__setattr__(settings, "environment", original_environment)
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "HTTPS is required"}
 
 
 @pytest.mark.asyncio
