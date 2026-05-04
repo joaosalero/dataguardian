@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -52,3 +54,39 @@ async def test_unhandled_errors_return_safe_response() -> None:
     assert response.status_code == 500
     assert response.json() == {"detail": "Internal server error"}
     assert "database password leaked" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_unhandled_error_logs_do_not_include_exception_message(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://testserver",
+    ) as client:
+        with caplog.at_level(logging.ERROR):
+            response = await client.get("/test-unhandled-error")
+
+    assert response.status_code == 500
+    assert "Unhandled exception" in caplog.text
+    assert "RuntimeError" in caplog.text
+    assert "database password leaked" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_openapi_documents_core_routes() -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/openapi.json")
+
+    schema = response.json()
+    assert response.status_code == 200
+    assert schema["paths"]["/health"]["get"]["summary"] == "Check API health"
+    assert schema["paths"]["/auth/login"]["post"]["summary"] == "Authenticate user"
+    assert schema["paths"]["/projects"]["get"]["summary"] == "List projects"
+    assert (
+        schema["paths"]["/projects/{project_id}/audit/run"]["post"]["summary"]
+        == "Run project audit"
+    )
