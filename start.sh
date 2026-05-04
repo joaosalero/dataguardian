@@ -2,16 +2,53 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKEND_LOG="$ROOT_DIR/.logs/backend.log"
-FRONTEND_LOG="$ROOT_DIR/.logs/frontend.log"
-BACKEND_PID=""
-FRONTEND_PID=""
-MODE="${1:-}"
+MODE=""
+VISUAL=""
 
 mkdir -p "$ROOT_DIR/.logs"
 
 log() {
   printf '[START] %s\n' "$1"
+}
+
+compose() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose "$@"
+  elif command -v docker-compose >/dev/null 2>&1; then
+    docker-compose "$@"
+  else
+    log "Docker Compose is required"
+    exit 1
+  fi
+}
+
+usage() {
+  printf 'Usage: %s [manual|auto] [--visual]\n' "$0"
+}
+
+parse_args() {
+  for arg in "$@"; do
+    case "$arg" in
+      manual|auto)
+        if [ -n "$MODE" ]; then
+          usage
+          exit 2
+        fi
+        MODE="$arg"
+        ;;
+      --visual)
+        VISUAL="--visual"
+        ;;
+      *)
+        usage
+        exit 2
+        ;;
+    esac
+  done
+
+  if [ -z "$MODE" ]; then
+    MODE="manual"
+  fi
 }
 
 port_pids() {
@@ -52,6 +89,17 @@ require_port_available_or_dataguardian() {
   exit 1
 }
 
+require_docker() {
+  if ! command -v docker >/dev/null 2>&1; then
+    log "Docker is required"
+    exit 1
+  fi
+  if ! docker info >/dev/null 2>&1; then
+    log "Docker is not running"
+    exit 1
+  fi
+}
+
 wait_for_url() {
   local url="$1"
   local label="$2"
@@ -66,72 +114,85 @@ wait_for_url() {
   return 1
 }
 
-start_postgres() {
-  log "Starting PostgreSQL with Docker Compose"
-  docker compose up -d
-}
-
-start_backend() {
-  if ! require_port_available_or_dataguardian 8000 "http://localhost:8000/health" "Backend"; then
+pytest_bin() {
+  if [ -n "${PYTEST_BIN:-}" ]; then
+    printf '%s\n' "$PYTEST_BIN"
     return 0
   fi
-  log "Starting backend on http://localhost:8000"
-  (
-    cd "$ROOT_DIR/backend"
-    PYTHONPATH="$ROOT_DIR/backend" ../.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
-  ) >"$BACKEND_LOG" 2>&1 &
-  BACKEND_PID="$!"
+
+  if command -v pytest >/dev/null 2>&1; then
+    command -v pytest
+    return 0
+  fi
+
+  return 1
+}
+
+warn_pytest_missing() {
+  log "[WARN] pytest not found. Skipping E2E tests."
+}
+
+start_services() {
+  require_docker
+  require_port_available_or_dataguardian 8000 "http://localhost:8000/health" "Backend" || true
+  require_port_available_or_dataguardian 3000 "http://localhost:3000/login" "Frontend" || true
+
+  log "Starting Docker Compose services: db backend-go frontend"
+  compose up -d db backend-go
+  compose up -d --force-recreate frontend
+
+  for _ in $(seq 1 30); do
+    if compose exec -T db pg_isready -U dataguardian -d dataguardian >/dev/null 2>&1; then
+      log "PostgreSQL is ready"
+      break
+    fi
+    sleep 1
+  done
+  if ! compose exec -T db pg_isready -U dataguardian -d dataguardian >/dev/null 2>&1; then
+    log "PostgreSQL did not become ready"
+    return 1
+  fi
+
   wait_for_url "http://localhost:8000/health" "Backend"
-}
-
-start_frontend() {
-  if ! require_port_available_or_dataguardian 3000 "http://localhost:3000/login" "Frontend"; then
-    return 0
-  fi
-  log "Starting frontend on http://localhost:3000"
-  (
-    cd "$ROOT_DIR/frontend"
-    npm run dev -- -H 127.0.0.1 -p 3000
-  ) >"$FRONTEND_LOG" 2>&1 &
-  FRONTEND_PID="$!"
   wait_for_url "http://localhost:3000/login" "Frontend"
 }
 
-stop_started_services() {
-  if [ -n "$FRONTEND_PID" ]; then
-    kill "$FRONTEND_PID" 2>/dev/null || true
-  fi
-  if [ -n "$BACKEND_PID" ]; then
-    kill "$BACKEND_PID" 2>/dev/null || true
-  fi
-}
-
 manual_mode() {
-  trap stop_started_services INT TERM
-  start_postgres
-  start_backend
-  start_frontend
+  start_services
   log "Manual mode ready"
-  log "Backend log: $BACKEND_LOG"
-  log "Frontend log: $FRONTEND_LOG"
-  wait
+  log "Backend: Go"
+  log "Backend log: docker compose logs -f backend-go"
+  log "Frontend log: docker compose logs -f frontend"
+  compose logs -f backend-go frontend
 }
 
 auto_mode() {
-  trap stop_started_services EXIT INT TERM
+  export GOCACHE="${GOCACHE:-/tmp/dataguardian-go-build}"
+  export GOMODCACHE="${GOMODCACHE:-/tmp/dataguardian-go-mod}"
   log "Running security checks"
   "$ROOT_DIR/security/run_security_checks.sh"
-  start_postgres
-  start_backend
-  start_frontend
+  start_services
   log "Running audit"
   "$ROOT_DIR/security/audit.sh"
-  log "Running backend tests"
-  "$ROOT_DIR/.venv/bin/pytest" "$ROOT_DIR/backend/tests"
+  log "Running Go backend tests"
+  (
+    cd "$ROOT_DIR/backend-go"
+    go test ./...
+  )
   log "Running E2E tests"
-  "$ROOT_DIR/.venv/bin/pytest" "$ROOT_DIR/tests/e2e"
+  if pytest_path="$(pytest_bin)"; then
+    if [ "$VISUAL" = "--visual" ]; then
+      E2E_HEADLESS=false "$pytest_path" "$ROOT_DIR/tests/e2e" -s
+    else
+      "$pytest_path" "$ROOT_DIR/tests/e2e"
+    fi
+  else
+    warn_pytest_missing
+  fi
   log "Automatic mode completed"
 }
+
+parse_args "$@"
 
 case "$MODE" in
   manual)
@@ -141,7 +202,7 @@ case "$MODE" in
     auto_mode
     ;;
   *)
-    printf 'Usage: %s manual|auto\n' "$0"
+    usage
     exit 2
     ;;
 esac

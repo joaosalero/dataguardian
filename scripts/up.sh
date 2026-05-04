@@ -63,64 +63,6 @@ wait_for_http() {
   return 1
 }
 
-run_detached() {
-  local log_file="$1"
-  shift
-
-  if command -v setsid >/dev/null 2>&1; then
-    setsid "$@" >"$log_file" 2>&1 < /dev/null &
-  else
-    nohup "$@" >"$log_file" 2>&1 < /dev/null &
-  fi
-}
-
-start_backend() {
-  if http_ok "http://localhost:$BACKEND_PORT/health"; then
-    log "backend running"
-    return 0
-  fi
-
-  if port_in_use "$BACKEND_PORT"; then
-    log "backend port $BACKEND_PORT is already in use, but health check failed."
-    log "Run ./scripts/doctor.sh to inspect the process."
-    return 1
-  fi
-
-  local uvicorn_cmd="uvicorn"
-  if [ -x "$ROOT_DIR/.venv/bin/uvicorn" ]; then
-    uvicorn_cmd="$ROOT_DIR/.venv/bin/uvicorn"
-  fi
-
-  log "starting backend on port $BACKEND_PORT"
-  (
-    cd "$ROOT_DIR/backend"
-    run_detached "$LOG_DIR/backend.log" "$uvicorn_cmd" app.main:app --reload --port "$BACKEND_PORT"
-  )
-
-  wait_for_http "backend" "http://localhost:$BACKEND_PORT/health" 30
-}
-
-start_frontend() {
-  if http_ok "http://localhost:$FRONTEND_PORT/login"; then
-    log "frontend running"
-    return 0
-  fi
-
-  if port_in_use "$FRONTEND_PORT"; then
-    log "frontend port $FRONTEND_PORT is already in use, but login page check failed."
-    log "Run ./scripts/doctor.sh to inspect the process."
-    return 1
-  fi
-
-  log "starting frontend on port $FRONTEND_PORT"
-  (
-    cd "$ROOT_DIR/frontend"
-    run_detached "$LOG_DIR/frontend.log" npm run dev
-  )
-
-  wait_for_http "frontend" "http://localhost:$FRONTEND_PORT/login" 45
-}
-
 if ! command -v docker >/dev/null 2>&1; then
   log "Docker is not installed or not on PATH."
   exit 1
@@ -131,11 +73,23 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
-log "starting PostgreSQL"
-compose up -d
-log "DB running"
+if port_in_use "$BACKEND_PORT" && ! http_ok "http://localhost:$BACKEND_PORT/health"; then
+  log "backend port $BACKEND_PORT is already in use, but health check failed."
+  log "Run ./scripts/doctor.sh to inspect the process."
+  exit 1
+fi
 
-start_backend
-start_frontend
+if port_in_use "$FRONTEND_PORT" && ! http_ok "http://localhost:$FRONTEND_PORT/login"; then
+  log "frontend port $FRONTEND_PORT is already in use, but login page check failed."
+  log "Run ./scripts/doctor.sh to inspect the process."
+  exit 1
+fi
+
+log "starting Docker Compose services: db backend-go frontend"
+compose up -d db backend-go
+compose up -d --force-recreate frontend
+
+wait_for_http "backend" "http://localhost:$BACKEND_PORT/health" 45
+wait_for_http "frontend" "http://localhost:$FRONTEND_PORT/login" 60
 
 log "system ready"

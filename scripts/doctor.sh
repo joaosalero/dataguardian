@@ -28,7 +28,7 @@ show_port_owner() {
   fi
 
   if [ "$port" = "8000" ]; then
-    pgrep -af "uvicorn .*app.main:app|python.*uvicorn" || true
+    pgrep -af "go run ./cmd/server|dataguardian-backend-go" || true
     return
   fi
 

@@ -1,113 +1,84 @@
 # DataGuardian
 
-DataGuardian is a full-stack database security auditing application. It combines a FastAPI backend, a Next.js frontend, PostgreSQL, secure cookie-based authentication, and automated security checks for dependencies, secrets, and runtime exposure.
+DataGuardian is a local-first security auditing and authentication demo built as a real engineering portfolio project. It shows a complete product slice: a Go API, a Next.js UI, PostgreSQL, Docker Compose orchestration, browser E2E tests, security checks, and CI.
 
-The app is designed to be runnable locally while following production-oriented security defaults: Argon2 password hashing, short-lived JWT sessions in HttpOnly cookies, HTTPS enforcement in production, encrypted sensitive user metadata, and CI security gates.
+The current application focuses on stable authentication and project readiness after a Python-to-Go backend migration. The historical Python backend is isolated under `backend-legacy-python/` for reference only. It is not executed by Docker, `start.sh`, CI, or any active runtime script.
 
-## Contents
+## What It Solves
 
-1. [Purpose](#purpose)
-2. [Stack](#stack)
-3. [Installation](#installation)
-4. [Usage Modes](#usage-modes)
-5. [Default Test Credentials](#default-test-credentials)
-6. [Creating Users](#creating-users)
-7. [Authentication And Security](#authentication-and-security)
-8. [Security Checks And Audit](#security-checks-and-audit)
-9. [Testing](#testing)
-10. [CI/CD](#cicd)
-11. [Troubleshooting](#troubleshooting)
+DataGuardian is intended to become a database security review tool. In its current version it provides the stable foundation needed before expanding the product:
 
-## Purpose
+- Register and sign in users securely.
+- Store users in PostgreSQL.
+- Use HttpOnly RS256 JWT session cookies.
+- Run the same local stack through deterministic scripts.
+- Validate behavior with Go tests, Playwright E2E tests, security scripts, and CI.
 
-DataGuardian lets users sign in, create projects, run a database security audit, and review audit history. The current audit engine checks a known schema for common security risks:
+This repository is intentionally scoped. Multi-tenant SaaS behavior, RBAC, audit trails, billing, and cloud deployment are future phases, not partially implemented features.
 
-- Sensitive column names such as password, token, secret, and API key fields.
-- Possible PII fields such as email, phone, CPF, and document identifiers.
-- Tables without primary keys.
-- Severity-based scoring.
+## Architecture
 
-The project is intentionally practical: it demonstrates secure authentication, user-scoped data access, audit persistence, browser automation, and DevSecOps checks without unnecessary infrastructure.
+Active runtime:
 
-## Stack
+- Backend: Go 1.22+, `net/http`, `pgx`, Argon2id password hashing, RS256 JWTs.
+- Frontend: Next.js, React, TypeScript, Tailwind CSS.
+- Database: PostgreSQL 15 through Docker Compose.
+- Orchestration: `start.sh`, `scripts/up.sh`, Docker Compose.
+- Tests: Go tests and Playwright E2E tests through pytest tooling.
+- Security automation: npm audit, repository secret scan, runtime exposure audit.
+- CI/CD: GitHub Actions.
 
-Backend:
+Docker Compose starts exactly these services:
 
-- Python 3.12
-- FastAPI
-- SQLAlchemy
-- PostgreSQL
-- Argon2 via `argon2-cffi`
-- RS256 JWT signing via `python-jose`
-- Fernet encryption via `cryptography`
-- Pytest
-
-Frontend:
-
-- Next.js
-- React
-- TypeScript
-- Tailwind CSS
-
-Automation:
-
-- Docker Compose
-- GitHub Actions
-- `pip-audit`
-- `npm audit`
-- Playwright E2E tests
-
-## Installation
-
-Prerequisites:
-
-- Python 3.12
-- Node.js 20
-- npm
-- Docker and Docker Compose
-
-Install dependencies:
-
-```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r backend/requirements.txt
-
-cd frontend
-npm ci
-cd ..
+```text
+db
+backend-go
+frontend
 ```
 
-Create a local `.env` file in the project root:
+The Go backend is the only active backend runtime and source of truth.
+
+## Requirements
+
+For normal local use:
+
+- Docker and Docker Compose.
+
+For development and automated testing:
+
+- Go 1.22 or newer.
+- Node.js 20 and npm.
+- Python 3.12 only if you want optional pytest/Playwright E2E testing.
+
+Python is not required for core functionality and is not used as a backend runtime.
+
+## Setup
+
+Install local frontend dependencies:
+
+```bash
+./scripts/install.sh
+```
+
+This installs optional pytest tooling into `.venv/` and installs frontend dependencies. The application itself still runs without Python or `.venv/`; pytest is only used for optional E2E checks. `.venv/`, `node_modules/`, `.next/`, logs, caches, local databases, and `.env` files are ignored by Git. Docker Compose keeps the container's `node_modules` and `.next` output in Docker volumes so container dev mode does not overwrite host build artifacts.
+
+Optional local `.env`:
 
 ```env
 APP_NAME=DataGuardian
 ENVIRONMENT=dev
 DEBUG=true
-SECRET_KEY=development-only-secret-key-change-before-production
 DATABASE_URL=postgresql://dataguardian:dataguardian@localhost:5434/dataguardian
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 ```
 
-`.env` is ignored by Git and must never be committed. Development and test can run without JWT key variables; the backend creates an ephemeral in-memory key pair for local sessions only. Production must use environment-provided keys.
-
-Required production environment variables:
-
-```text
-ENVIRONMENT=prod
-SECRET_KEY=<strong app secret from your secret manager>
-JWT_PRIVATE_KEY=<PEM private key from your secret manager>
-JWT_PUBLIC_KEY=<matching PEM public key from your secret manager>
-ENCRYPTION_KEY=<Fernet key from your secret manager>
-DATABASE_URL=<production database URL from your secret manager>
-```
-
-Do not commit these values. Store them in a platform secret manager, deployment environment, or CI secret store.
+Do not commit `.env` files, JWT keys, tokens, credentials, or production database URLs.
 
 ## Usage Modes
 
-Manual mode starts the database, backend, and frontend for normal browser use:
+### 1. Normal Local Use
+
+Start the application:
 
 ```bash
 ./start.sh manual
@@ -116,217 +87,245 @@ Manual mode starts the database, backend, and frontend for normal browser use:
 Open:
 
 ```text
-http://localhost:3000
+Frontend: http://localhost:3000
+Backend:  http://localhost:8000
+Health:   http://localhost:8000/health
 ```
 
-Automatic mode runs the local security checks, starts services, runs the runtime audit, runs backend tests, and runs E2E tests:
+`start.sh manual` starts `db`, `backend-go`, and `frontend` through Docker Compose and follows backend/frontend logs. It does not kill unrelated processes. If ports `3000` or `8000` are owned by another process, it stops with a clear error.
+
+Equivalent service-only command:
 
 ```bash
-./start.sh auto
+./scripts/up.sh
 ```
 
-`start.sh` detects port conflicts on `3000` and `8000`. If DataGuardian is already responding on a port, the script reuses it. If another process owns the port, the script stops and prints instructions; it does not kill unrelated processes or silently change ports.
+### 2. Manual Testing And Visual Verification
 
-## Default Test Credentials
-
-In `dev` and `test` environments, the backend ensures this local test user exists:
-
-```text
-Username: test
-Password: test123
-```
-
-This user is never created in production.
-
-When the user table is empty in local development, the backend also creates an admin user and prints a one-time temporary credential to the local console. Production does not print generated credentials; production admin bootstrap must use explicit environment variables.
-
-## Creating Users
-
-Public registration endpoint:
-
-```bash
-curl -X POST http://localhost:8000/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"username":"new-user@example.com","password":"StrongPass123"}'
-```
-
-CLI user creation:
-
-```bash
-python scripts/create_user.py --username admin@example.com --admin --must-change-password
-```
-
-The CLI prompts for the password interactively so secrets are not written to shell history.
-
-## Authentication And Security
-
-Password security:
-
-- Passwords are hashed with Argon2.
-- Plaintext passwords are never stored.
-- Registration enforces basic password strength.
-
-JWT session security:
-
-- JWTs include `sub`, `iat`, and `exp`.
-- JWTs are signed with RS256.
-- `JWT_PRIVATE_KEY` and `JWT_PUBLIC_KEY` must come from environment variables in production.
-- The signing algorithm is pinned to RS256 and is not downgraded by local `.env` values.
-- Tokens are short-lived; default expiration is 30 minutes.
-- Invalid tokens return a generic authentication error.
-- Tokens are not logged.
-
-Cookie security:
-
-- Login sets the JWT in an HttpOnly cookie.
-- The frontend uses `credentials: "include"` and does not store JWTs in `localStorage`.
-- Cookies use `SameSite=Lax`.
-- Cookies are marked `Secure` in production.
-
-HTTPS strategy:
-
-- Development and test mode allow HTTP on localhost.
-- Production mode rejects non-HTTPS requests.
-- Reverse proxies should pass `X-Forwarded-Proto: https`.
-- Real TLS must be terminated by infrastructure such as Nginx, Caddy, Traefik, a cloud load balancer, or another reverse proxy. The app does not fake HTTPS.
-
-Rate limiting:
-
-- `/auth/login` and `/auth/register` use in-memory rate limiting.
-- Defaults are controlled by `AUTH_RATE_LIMIT_MAX_REQUESTS` and `AUTH_RATE_LIMIT_WINDOW_SECONDS`.
-- Limit failures return HTTP `429` with a generic response.
-- In-memory limits are suitable for one process; production deployments with multiple app instances should use a shared limiter such as Redis.
-
-Database security:
-
-- Sensitive user metadata is encrypted with Fernet.
-- Production requires `ENCRYPTION_KEY`.
-- Fernet is not used for passwords.
-- Encryption keys must come from environment variables and must not be committed.
-
-## Security Checks And Audit
-
-Run baseline security checks:
-
-```bash
-./security/run_security_checks.sh
-```
-
-Run the runtime audit after services are running:
-
-```bash
-./security/audit.sh
-```
-
-The security layer validates:
-
-- Python dependencies with `pip-audit`.
-- Node dependencies with `npm audit --audit-level=high`.
-- Tracked files for sensitive lowercase assignment patterns.
-- `.env` ignore and tracking status.
-- Backend and frontend runtime responses for stack traces, database URLs, tokens, password markers, and verbose disclosure.
-
-Example report:
-
-```text
-[SECURITY AUDIT REPORT]
-- Dependency scan: PASS
-- Secrets exposure: PASS
-- Backend exposure: PASS
-- Frontend exposure: PASS
-- Risk level: LOW
-```
-
-Limitations:
-
-- This is a baseline security layer, not a full penetration test.
-- The secret scanner is intentionally lightweight.
-- Runtime checks do not replace authenticated authorization testing, fuzzing, or managed DAST tooling.
-
-## Testing
-
-Backend tests:
-
-```bash
-.venv/bin/pytest backend/tests
-```
-
-Frontend build:
-
-```bash
-cd frontend
-npm run build
-```
-
-E2E test:
-
-```bash
-.venv/bin/pytest tests/e2e
-```
-
-The E2E test expects the backend on `http://localhost:8000` and the frontend on `http://localhost:3000`.
-
-## CI/CD
-
-GitHub Actions runs on push and pull request:
-
-1. Start PostgreSQL 15 as a service.
-2. Install Python dependencies and `pip-audit`.
-3. Run Python dependency audit.
-4. Run backend tests.
-5. Install Node dependencies with `npm ci`.
-6. Run `npm audit --audit-level=high`.
-7. Run the repository secret scan.
-8. Build the frontend.
-
-CI fails on backend test failures, frontend build failures, high severity Node vulnerabilities, Python audit findings, or secret-scan failures.
-
-## Troubleshooting
-
-Port already in use:
+Start the stack:
 
 ```bash
 ./start.sh manual
 ```
 
-The start script does not kill unrelated processes. If a non-DataGuardian process owns port `3000` or `8000`, stop that process manually and rerun the command.
+Use the development test user:
 
-Docker is not running:
-
-```bash
-docker compose up -d
+```text
+Username: admin
+Password: admin123
 ```
 
-If Docker reports a daemon error, start Docker Desktop or the Docker service, then rerun `./start.sh manual`.
+Then verify:
 
-Backend cannot connect to PostgreSQL:
+1. Open `http://localhost:3000/login`.
+2. Sign in with `admin / admin123`.
+3. Confirm navigation to `/dashboard`.
+4. Confirm the dashboard shows the signed-in user.
 
-- Confirm Docker is running.
-- Confirm `docker compose ps` shows the database container.
-- Confirm `DATABASE_URL` uses local port `5434` for Docker Compose.
-
-Missing production keys:
-
-- Set `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `SECRET_KEY`, and `ENCRYPTION_KEY` through your secret manager.
-- Ensure PEM newlines are preserved, or provide escaped newlines as `\n`.
-- Do not paste real keys into tracked files.
-
-HTTPS production setup:
-
-- Terminate TLS at a reverse proxy or load balancer.
-- Forward requests to the FastAPI app over the private network.
-- Preserve `X-Forwarded-Proto: https`; production requests without HTTPS are rejected.
-
-Missing dependencies:
+To run browser E2E tests visibly:
 
 ```bash
-pip install -r backend/requirements.txt
-cd frontend
-npm ci
+./start.sh auto --visual
 ```
 
-Security audit cannot reach services:
+The `admin` and `test` local users are created only in `dev` and `test` environments. They are never bootstrapped in production.
 
-- Run `./start.sh manual` first, or use `./start.sh auto`.
+### 3. Automated Testing
+
+Run the full local automation flow:
+
+```bash
+./start.sh auto
+```
+
+This runs security checks, starts the Docker Compose services, runs the runtime audit, and runs Go tests. If pytest is available, it also runs Playwright E2E tests. If pytest is not available, E2E tests are skipped with:
+
+```text
+[WARN] pytest not found. Skipping E2E tests.
+```
+
+Run the local test bundle:
+
+```bash
+./run-tests.sh
+```
+
+`./run-tests.sh` always runs Go tests and the frontend build. If pytest is available, it also runs the architecture contract test and Playwright E2E tests. If pytest is missing, those pytest-based checks are skipped with the same warning.
+
+Run individual checks:
+
+```bash
+cd backend-go && go test ./...
+cd frontend && npm run build
+```
+
+### Optional E2E Testing (pytest)
+
+The project works without Python. Python and pytest are only needed for optional browser E2E testing.
+
+Install pytest tooling globally or in your own environment:
+
+```bash
+pip install pytest pytest-playwright
+```
+
+Or keep it outside the repository:
+
+```bash
+python3 -m venv /tmp/dataguardian-pytest
+/tmp/dataguardian-pytest/bin/pip install pytest pytest-playwright
+```
+
+If you use a pytest binary outside `PATH`, set `PYTEST_BIN`:
+
+```bash
+PYTEST_BIN=/path/to/pytest ./start.sh auto
+PYTEST_BIN=/path/to/pytest ./run-tests.sh
+```
+
+The script detection order is:
+
+1. Use `PYTEST_BIN` if it is set.
+2. Else use `pytest` from `PATH` if available.
+3. Else print the warning and skip E2E tests.
+
+## Security Model
+
+Authentication:
+
+- Passwords are hashed with Argon2id.
+- Plaintext passwords are never stored.
+- JWT access tokens are signed with RS256.
+- JWT validation requires `exp`, `iat`, and `sub`.
+- The signing algorithm is pinned to RS256.
+- `/auth/login` and `/auth/register` are rate limited.
+
+Cookies:
+
+- Sessions are stored in HttpOnly cookies.
+- Cookies use `SameSite=Lax`.
+- Cookies are marked `Secure` in production.
+- The frontend uses `credentials: "include"` and does not store JWTs in `localStorage`.
+
+Production assumptions:
+
+- `ENVIRONMENT=prod` requires `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, and `FERNET_KEY`.
+- JWT keys must come from a secret manager or deployment environment.
+- Production requests must arrive over HTTPS or through a proxy that sets `X-Forwarded-Proto: https`.
+- Fernet is reserved for future reversible sensitive data encryption. It is not used for passwords.
+
+Security commands:
+
+```bash
+./security/run_security_checks.sh
+./security/run_security_checks.sh --secrets-only
+./security/audit.sh
+```
+
+The security scripts check Node dependency risk, tracked/untracked repository files for obvious secret assignments, `.env` ignore/tracking status, and runtime responses for stack traces or sensitive leakage.
+
+## CI/CD
+
+GitHub Actions runs on push and pull request:
+
+1. Start PostgreSQL 15.
+2. Set up Go from `backend-go/go.mod`.
+3. Run `go test ./...`.
+4. Set up Python only for the architecture contract test.
+5. Install frontend dependencies with `npm ci`.
+6. Run `npm audit --audit-level=high`.
+7. Run the repository secret scan.
+8. Build the frontend.
+
+CI does not run the legacy Python backend.
+
+## Project Structure
+
+```text
+backend-go/              Active Go backend
+backend-legacy-python/   Reference-only legacy backend
+frontend/                Next.js application
+scripts/                 Local setup, diagnostics, startup, build helpers
+security/                Security check and runtime audit scripts
+tests/                   Architecture and Playwright E2E tests
+.github/workflows/       CI pipeline
+docker-compose.yml       Local runtime stack
+start.sh                 Main orchestrator
+run-tests.sh             Local non-E2E test bundle
+```
+
+## Versioning Readiness
+
+Stabilized for this version:
+
+- Go-only backend runtime.
+- Docker Compose starts only `db`, `backend-go`, and `frontend`.
+- Deterministic startup scripts.
+- No Python backend execution in active automation.
+- Dev/test bootstrap user guarded by environment.
+- Go tests, architecture contract test, frontend build, E2E flow, and security scripts.
+- `.env`, `.venv`, build outputs, caches, logs, local databases, and dependency folders ignored by Git.
+
+Intentionally not implemented yet:
+
+- Multi-tenant isolation.
+- RBAC.
+- Audit trail.
+- Enterprise billing.
+- Cloud infrastructure.
+- Production deployment automation.
+
+## Roadmap
+
+Next phases:
+
+- Rebuild the database audit engine in Go.
+- Add tenant isolation.
+- Add RBAC.
+- Add immutable audit trail events.
+- Add enterprise SaaS packaging and deployment guidance.
+- Add deeper security testing and production observability.
+
+## Troubleshooting
+
+Port conflict:
+
+```bash
+./scripts/doctor.sh
+```
+
+If a non-DataGuardian process owns port `3000` or `8000`, stop it manually and rerun startup. The scripts do not kill arbitrary processes.
+
+Docker not running:
+
+```bash
+docker compose config --services
+docker compose up -d db backend-go frontend
+```
+
+If Docker reports a daemon error, start Docker Desktop or the Docker service first.
+
+Database startup issues:
+
+- Confirm `docker compose ps` shows `dataguardian_db`.
+- Confirm local PostgreSQL is mapped to port `5434`.
+- Confirm the backend uses `db:5432` inside Docker Compose.
+
+Frontend cannot reach backend:
+
 - Confirm `curl http://localhost:8000/health` returns `{"status":"ok"}`.
-- Confirm `curl http://localhost:3000/login` returns the login page.
+- Confirm `NEXT_PUBLIC_API_URL` is `http://localhost:8000` for local Docker use.
+- Restart with `./scripts/up.sh`.
+
+Missing test tooling:
+
+```bash
+./scripts/install.sh
+```
+
+Then rerun:
+
+```bash
+./run-tests.sh
+./start.sh auto
+```

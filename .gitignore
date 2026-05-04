@@ -19,11 +19,15 @@ env/
 .vscode/
 
 # Logs
+.logs/
 *.log
 
 # Build / Distribution
 build/
 dist/
+!dist/
+!dist/**/
+!dist/**/README.md
 *.egg-info/
 
 # OS files
@@ -34,6 +38,7 @@ Thumbs.db
 .coverage
 htmlcov/
 .pytest_cache/
+*.tsbuildinfo
 
 # Database (local/testing)
 *.db
@@ -51,3 +56,6 @@ codex/
 # playwright
 /playwright-report/
 /test-results/
+backend-legacy-python/
+dist/
+dist/

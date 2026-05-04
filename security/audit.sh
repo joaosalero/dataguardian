@@ -22,8 +22,7 @@ contains_sensitive_output() {
 check_dependencies() {
   ./security/run_security_checks.sh >/tmp/dataguardian-security-checks.out 2>/tmp/dataguardian-security-checks.err
 
-  if ! grep -q '\[PASS\] Python dependency scan' /tmp/dataguardian-security-checks.out \
-    || ! grep -q '\[PASS\] Node dependency scan' /tmp/dataguardian-security-checks.out; then
+  if ! grep -q '\[PASS\] Node dependency scan' /tmp/dataguardian-security-checks.out; then
     DEPENDENCY_STATUS="FAIL"
   fi
 

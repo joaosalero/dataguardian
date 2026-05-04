@@ -17,29 +17,6 @@ mark_failure() {
   FAILED=1
 }
 
-run_pip_audit() {
-  local audit_cmd=()
-
-  if command -v pip-audit >/dev/null 2>&1; then
-    audit_cmd=(pip-audit)
-  elif python -m pip_audit --version >/dev/null 2>&1; then
-    audit_cmd=(python -m pip_audit)
-  elif [ -x ".venv/bin/python" ] && .venv/bin/python -m pip_audit --version >/dev/null 2>&1; then
-    audit_cmd=(.venv/bin/python -m pip_audit)
-  else
-    print_result "Python dependency scan: pip-audit is not installed" "FAIL"
-    mark_failure
-    return
-  fi
-
-  if "${audit_cmd[@]}" -r backend/requirements.txt --progress-spinner off --cache-dir /tmp/dataguardian-pip-audit-cache >/tmp/dataguardian-pip-audit.out 2>/tmp/dataguardian-pip-audit.err; then
-    print_result "Python dependency scan" "PASS"
-  else
-    print_result "Python dependency scan" "FAIL"
-    mark_failure
-  fi
-}
-
 run_npm_audit() {
   if [ ! -f "frontend/package-lock.json" ]; then
     print_result "Node dependency scan: package-lock.json missing" "FAIL"
@@ -77,8 +54,12 @@ run_secret_scan() {
   local key
 
   while IFS= read -r -d '' file; do
+    if [ ! -f "$file" ]; then
+      continue
+    fi
+
     case "$file" in
-      security/*.sh|frontend/package-lock.json|frontend/package.json)
+      security/*.sh|frontend/package-lock.json|frontend/package.json|backend-legacy-python/*)
         continue
         ;;
     esac
@@ -131,7 +112,6 @@ run_config_validation() {
 printf '[SECURITY CHECKS]\n'
 case "$MODE" in
   all)
-    run_pip_audit
     run_npm_audit
     run_secret_scan
     run_config_validation

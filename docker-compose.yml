@@ -12,8 +12,48 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  backend-go:
+    image: golang:1.22
+    container_name: dataguardian_backend_go
+    working_dir: /app/backend-go
+    depends_on:
+      - db
+    environment:
+      APP_NAME: DataGuardian
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql://dataguardian:dataguardian@db:5432/dataguardian
+      ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+      GO_BACKEND_ADDR: 0.0.0.0:8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - go_module_cache:/go/pkg/mod
+    command: go run ./cmd/server
+
+  frontend:
+    image: node:20-slim
+    container_name: dataguardian_frontend
+    working_dir: /app/frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_ENVIRONMENT: dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - frontend_node_modules:/app/frontend/node_modules
+      - frontend_next_cache:/app/frontend/.next
+    command: >
+      sh -c "find .next -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true;
+      npm install &&
+      npm run dev -- -H 0.0.0.0 -p 3000"
+
 volumes:
   postgres_data:
+  frontend_node_modules:
+  frontend_next_cache:
+  go_module_cache:
 
-# Run: docker-compose up -d
+# Run: docker compose up -d
 # Stop: docker-compose down

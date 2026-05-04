@@ -3,19 +3,31 @@ set -u
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR" || exit 1
+export GOCACHE="${GOCACHE:-/tmp/dataguardian-go-build}"
+export GOMODCACHE="${GOMODCACHE:-/tmp/dataguardian-go-mod}"
 
 DB_STATUS="FAILED"
 BACKEND_STATUS="FAILED"
 FRONTEND_STATUS="FAILED"
-BACKEND_TESTS_STATUS="FAILED"
+GO_TESTS_STATUS="FAILED"
 E2E_TESTS_STATUS="FAILED"
 
-pytest_cmd() {
-  if [ -x "$ROOT_DIR/.venv/bin/pytest" ]; then
-    "$ROOT_DIR/.venv/bin/pytest" "$@"
-  else
-    pytest "$@"
+pytest_bin() {
+  if [ -n "${PYTEST_BIN:-}" ]; then
+    printf '%s\n' "$PYTEST_BIN"
+    return 0
   fi
+
+  if command -v pytest >/dev/null 2>&1; then
+    command -v pytest
+    return 0
+  fi
+
+  return 1
+}
+
+warn_pytest_missing() {
+  printf '[WARN] pytest not found. Skipping E2E tests.\n'
 }
 
 http_ok() {
@@ -50,29 +62,33 @@ else
 fi
 
 printf "\n== Backend tests ==\n"
-if pytest_cmd backend/tests; then
-  BACKEND_TESTS_STATUS="PASSED"
+if (cd "$ROOT_DIR/backend-go" && go test ./...); then
+  GO_TESTS_STATUS="PASSED"
 fi
 
 printf "\n== E2E tests ==\n"
-if pytest_cmd tests/e2e -s; then
-  E2E_TESTS_STATUS="PASSED"
+if pytest_path="$(pytest_bin)"; then
+  if "$pytest_path" tests/e2e -s; then
+    E2E_TESTS_STATUS="PASSED"
+  fi
+else
+  warn_pytest_missing
+  E2E_TESTS_STATUS="SKIPPED"
 fi
 
 printf "\n== Summary ==\n"
 printf "DB: %s\n" "$DB_STATUS"
 printf "Backend: %s\n" "$BACKEND_STATUS"
 printf "Frontend: %s\n" "$FRONTEND_STATUS"
-printf "Backend tests: %s\n" "$BACKEND_TESTS_STATUS"
+printf "Go tests: %s\n" "$GO_TESTS_STATUS"
 printf "E2E tests: %s\n" "$E2E_TESTS_STATUS"
 
 if [ "$DB_STATUS" = "OK" ] &&
   [ "$BACKEND_STATUS" = "OK" ] &&
   [ "$FRONTEND_STATUS" = "OK" ] &&
-  [ "$BACKEND_TESTS_STATUS" = "PASSED" ] &&
-  [ "$E2E_TESTS_STATUS" = "PASSED" ]; then
+  [ "$GO_TESTS_STATUS" = "PASSED" ] &&
+  { [ "$E2E_TESTS_STATUS" = "PASSED" ] || [ "$E2E_TESTS_STATUS" = "SKIPPED" ]; }; then
   exit 0
 fi
 
 exit 1
-
