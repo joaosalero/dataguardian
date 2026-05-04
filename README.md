@@ -22,13 +22,14 @@ The project is intentionally pragmatic: it is built to be easy to run, easy to r
 12. [Running Automated Tests](#running-automated-tests)
 13. [Running the Automated Browser Demo / E2E Test](#running-the-automated-browser-demo--e2e-test)
 14. [API Usage Examples](#api-usage-examples)
-15. [Security Considerations](#security-considerations)
-16. [Testing Strategy](#testing-strategy)
-17. [CI/CD](#cicd)
-18. [Technical Decisions](#technical-decisions)
-19. [Roadmap](#roadmap)
-20. [Troubleshooting](#troubleshooting)
-21. [Author](#author)
+15. [Security](#security)
+16. [Security Considerations](#security-considerations)
+17. [Testing Strategy](#testing-strategy)
+18. [CI/CD](#cicd)
+19. [Technical Decisions](#technical-decisions)
+20. [Roadmap](#roadmap)
+21. [Troubleshooting](#troubleshooting)
+22. [Author](#author)
 
 ## Project Overview
 
@@ -318,7 +319,7 @@ Current flow:
 The current app does not expose a public registration page or registration endpoint. For local testing, create a demo user directly:
 
 ```bash
-PYTHONPATH=backend python -c "import app.models; from app.core.database import Base, engine, SessionLocal; from app.auth import hash_password; from app.models.user import User; Base.metadata.create_all(bind=engine); db=SessionLocal(); email='demo@dataguardian.dev'; password='strong-password'; user=db.query(User).filter(User.email==email).one_or_none(); user = user or User(email=email, hashed_password=hash_password(password)); user.hashed_password=hash_password(password); db.add(user); db.commit(); db.close(); print('User ready: demo@dataguardian.dev / strong-password')"
+PYTHONPATH=backend python -c "import app.models; from app.core.database import Base, engine, SessionLocal; from app.auth import hash_password; from app.models.user import User; Base.metadata.create_all(bind=engine); db=SessionLocal(); email='demo@dataguardian.dev'; demo_password='strong-password'; user=db.query(User).filter(User.email==email).one_or_none(); user = user or User(email=email, hashed_password=hash_password(demo_password)); user.hashed_password=hash_password(demo_password); db.add(user); db.commit(); db.close(); print('User ready: demo@dataguardian.dev / strong-password')"
 ```
 
 Then sign in with:
@@ -495,6 +496,59 @@ curl http://localhost:8000/projects/1/audit/history \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
+## Security
+
+DataGuardian includes a baseline local security layer intended to catch common issues before code reaches CI. It checks dependency vulnerabilities, accidental secret exposure, tracked environment files, and basic runtime response exposure from the backend and frontend.
+
+Run all local security checks from the project root:
+
+```bash
+./security/run_security_checks.sh
+```
+
+Run the structured audit after starting the backend on `http://localhost:8000` and the frontend on `http://localhost:3000`:
+
+```bash
+./security/audit.sh
+```
+
+The security checks validate:
+
+- Python dependencies with `pip-audit`.
+- Node dependencies with `npm audit --audit-level=high`.
+- Tracked repository files for sensitive lowercase assignment patterns for password, secret, token, and API key values.
+- Configuration hygiene, including confirmation that `.env` is ignored and not tracked.
+- Runtime responses for stack traces, database URLs, tokens, password markers, and verbose framework disclosure.
+
+Example successful local check:
+
+```text
+[SECURITY CHECKS]
+[PASS] Python dependency scan
+[PASS] Node dependency scan
+[PASS] Secret scan
+[PASS] Config validation
+[PASS] Security checks completed
+```
+
+Example audit report:
+
+```text
+[SECURITY AUDIT REPORT]
+- Dependency scan: PASS
+- Secrets exposure: PASS
+- Backend exposure: PASS
+- Frontend exposure: PASS
+- Risk level: LOW
+```
+
+Limitations:
+
+- This is not a full penetration test.
+- The secret scanner is intentionally lightweight and does not replace a managed secret-scanning platform.
+- Runtime checks cover baseline exposure only; they do not perform authenticated authorization testing or deep application fuzzing.
+- Dependency results depend on the vulnerability databases used by `pip-audit` and `npm audit`.
+
 ## Security Considerations
 
 Current security-related behavior:
@@ -506,6 +560,9 @@ Current security-related behavior:
 - CORS allows the local frontend origin.
 - Unexpected backend errors return a generic response body.
 - Request logging records method, path, and status code.
+- Production startup rejects missing, short, or known placeholder `SECRET_KEY` values.
+- Backend and frontend responses include basic hardening headers.
+- CI blocks high-severity dependency vulnerabilities and secret-scan failures.
 
 Important limitations:
 
@@ -543,15 +600,14 @@ Current CI flow:
 
 1. Start PostgreSQL 15 as a GitHub Actions service.
 2. Set up Python 3.12.
-3. Install backend and Playwright Python dependencies.
-4. Run `pytest backend/tests`.
-5. Set up Node.js 20.
-6. Run `npm install`.
-7. Run `npm run build`.
-8. Install Playwright Chromium and OS dependencies.
-9. Start the FastAPI backend.
-10. Start the built Next.js frontend.
-11. Run `pytest tests/e2e`.
+3. Install backend dependencies and `pip-audit`.
+4. Run `pip-audit -r backend/requirements.txt`.
+5. Run `pytest backend/tests`.
+6. Set up Node.js 20.
+7. Run `npm ci`.
+8. Run `npm audit --audit-level=high`.
+9. Run the repository secret scan.
+10. Run `npm run build`.
 
 Dependabot is also configured under `.github/dependabot.yml` for dependency update support.
 
@@ -668,7 +724,7 @@ Check:
 Create the local demo user again:
 
 ```bash
-PYTHONPATH=backend python -c "import app.models; from app.core.database import Base, engine, SessionLocal; from app.auth import hash_password; from app.models.user import User; Base.metadata.create_all(bind=engine); db=SessionLocal(); email='demo@dataguardian.dev'; password='strong-password'; user=db.query(User).filter(User.email==email).one_or_none(); user = user or User(email=email, hashed_password=hash_password(password)); user.hashed_password=hash_password(password); db.add(user); db.commit(); db.close(); print('User ready: demo@dataguardian.dev / strong-password')"
+PYTHONPATH=backend python -c "import app.models; from app.core.database import Base, engine, SessionLocal; from app.auth import hash_password; from app.models.user import User; Base.metadata.create_all(bind=engine); db=SessionLocal(); email='demo@dataguardian.dev'; demo_password='strong-password'; user=db.query(User).filter(User.email==email).one_or_none(); user = user or User(email=email, hashed_password=hash_password(demo_password)); user.hashed_password=hash_password(demo_password); db.add(user); db.commit(); db.close(); print('User ready: demo@dataguardian.dev / strong-password')"
 ```
 
 ### Playwright is missing browser or OS dependencies

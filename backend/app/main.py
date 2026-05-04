@@ -59,6 +59,9 @@ async def log_requests(request: Request, call_next):
     """Log method/path/status only; headers, query strings, and bodies may be sensitive."""
     logger.info("Request started: %s %s", request.method, request.url.path)
     response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
     logger.info(
         "Request finished: %s %s %s",
         request.method,

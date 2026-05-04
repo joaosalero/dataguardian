@@ -24,6 +24,19 @@ async def test_health_check_returns_ok() -> None:
 
 
 @pytest.mark.asyncio
+async def test_health_check_includes_security_headers() -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/health")
+
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "no-referrer"
+
+
+@pytest.mark.asyncio
 async def test_cors_allows_frontend_login_requests() -> None:
     async with AsyncClient(
         transport=ASGITransport(app=app),

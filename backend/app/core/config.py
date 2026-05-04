@@ -19,10 +19,17 @@ DEFAULT_APP_NAME = "DataGuardian"
 DEFAULT_ENVIRONMENT = "development"
 DEFAULT_DEBUG = True
 DEFAULT_API_PREFIX = "/api"
-DEFAULT_SECRET_KEY = "supersecretkey"
+DEFAULT_SECRET_KEY = "development-only-secret-key-change-before-production"
 DEFAULT_ALGORITHM = "HS256"
 DEFAULT_ACCESS_TOKEN_EXPIRE_MINUTES = 30
 DEFAULT_DATABASE_URL = "postgresql://dataguardian:dataguardian@localhost:5434/dataguardian"
+MINIMUM_SECRET_KEY_LENGTH = 32
+UNSAFE_SECRET_KEYS = {
+    "supersecretkey",
+    "change-this-in-production",
+    "change-this-in-ci",
+    DEFAULT_SECRET_KEY,
+}
 
 
 def _get_bool_env(name: str, default: bool) -> bool:
@@ -46,12 +53,20 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> Settings:
+        environment = os.getenv("ENVIRONMENT", DEFAULT_ENVIRONMENT)
+        secret_key = os.getenv("SECRET_KEY", DEFAULT_SECRET_KEY)
+        if environment == "production" and (
+            secret_key in UNSAFE_SECRET_KEYS
+            or len(secret_key) < MINIMUM_SECRET_KEY_LENGTH
+        ):
+            raise ValueError("A strong SECRET_KEY is required in production")
+
         return cls(
             app_name=os.getenv("APP_NAME", DEFAULT_APP_NAME),
-            environment=os.getenv("ENVIRONMENT", DEFAULT_ENVIRONMENT),
+            environment=environment,
             debug=_get_bool_env("DEBUG", DEFAULT_DEBUG),
             api_prefix=os.getenv("API_PREFIX", DEFAULT_API_PREFIX),
-            secret_key=os.getenv("SECRET_KEY", DEFAULT_SECRET_KEY),
+            secret_key=secret_key,
             algorithm=os.getenv("ALGORITHM", DEFAULT_ALGORITHM),
             access_token_expire_minutes=int(
                 os.getenv(
