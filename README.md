@@ -20,7 +20,7 @@ This repository is intentionally scoped. Multi-tenant SaaS behavior, RBAC, audit
 
 Active runtime:
 
-- Backend: Go 1.22+, `net/http`, `pgx`, Argon2id password hashing, RS256 JWTs.
+- Backend: Go 1.25+, `net/http`, `pgx`, Argon2id password hashing, RS256 JWTs.
 - Frontend: Next.js, React, TypeScript, Tailwind CSS.
 - Database: PostgreSQL 15 through Docker Compose.
 - Orchestration: `start.sh`, `scripts/up.sh`, Docker Compose.
@@ -46,7 +46,7 @@ For normal local use:
 
 For development and automated testing:
 
-- Go 1.22 or newer.
+- Go 1.25 or newer.
 - Node.js 20 and npm.
 - Python 3.12 only if you want optional pytest/Playwright E2E testing.
 
@@ -150,7 +150,7 @@ Run the local test bundle:
 ./run-tests.sh
 ```
 
-`./run-tests.sh` always runs Go tests and the frontend build. If pytest is available, it also runs the architecture contract test and Playwright E2E tests. If pytest is missing, those pytest-based checks are skipped with the same warning.
+`./run-tests.sh` always runs Go tests and the frontend build. It uses host Go when Go 1.25+ is available; otherwise it runs Go tests through the Docker Compose `backend-go` service. If pytest is available, it also runs the architecture contract test and Playwright E2E tests. If pytest is missing, those pytest-based checks are skipped with the same warning.
 
 Run individual checks:
 

@@ -132,6 +132,10 @@ warn_pytest_missing() {
   log "[WARN] pytest not found. Skipping E2E tests."
 }
 
+run_go_tests() {
+  compose run --rm backend-go go test ./...
+}
+
 start_services() {
   require_docker
   require_port_available_or_dataguardian 8000 "http://localhost:8000/health" "Backend" || true
@@ -175,10 +179,7 @@ auto_mode() {
   log "Running audit"
   "$ROOT_DIR/security/audit.sh"
   log "Running Go backend tests"
-  (
-    cd "$ROOT_DIR/backend-go"
-    go test ./...
-  )
+  run_go_tests
   log "Running E2E tests"
   if pytest_path="$(pytest_bin)"; then
     if [ "$VISUAL" = "--visual" ]; then

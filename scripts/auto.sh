@@ -30,6 +30,22 @@ warn_pytest_missing() {
   printf '[WARN] pytest not found. Skipping E2E tests.\n'
 }
 
+run_go_tests() {
+  if go version 2>/dev/null | grep -Eq 'go1\.(25|2[6-9]|[3-9][0-9])'; then
+    (cd "$ROOT_DIR/backend-go" && go test ./...)
+    return
+  fi
+
+  if docker compose version >/dev/null 2>&1; then
+    docker compose run --rm backend-go go test ./...
+  elif command -v docker-compose >/dev/null 2>&1; then
+    docker-compose run --rm backend-go go test ./...
+  else
+    printf 'Go 1.25 or Docker Compose is required to run backend tests.\n' >&2
+    return 1
+  fi
+}
+
 http_ok() {
   local url="$1"
   command -v curl >/dev/null 2>&1 && curl -fsS "$url" >/dev/null 2>&1
@@ -62,7 +78,7 @@ else
 fi
 
 printf "\n== Backend tests ==\n"
-if (cd "$ROOT_DIR/backend-go" && go test ./...); then
+if run_go_tests; then
   GO_TESTS_STATUS="PASSED"
 fi
 

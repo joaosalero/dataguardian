@@ -27,3 +27,15 @@ func TestVerifyKnownArgon2IDHash(t *testing.T) {
 		t.Fatal("expected generated argon2id hash to verify")
 	}
 }
+
+func TestVerifyPasswordRejectsOutOfRangeArgon2Params(t *testing.T) {
+	malformed := "$argon2id$v=19$m=4294967296,t=3,p=4$c2FsdA$Y2FuZGlkYXRl"
+	if VerifyPassword("StrongPass123", malformed) {
+		t.Fatal("expected out-of-range memory parameter to fail")
+	}
+
+	malformed = "$argon2id$v=19$m=65536,t=3,p=256$c2FsdA$Y2FuZGlkYXRl"
+	if VerifyPassword("StrongPass123", malformed) {
+		t.Fatal("expected out-of-range parallelism parameter to fail")
+	}
+}
