@@ -8,6 +8,7 @@ __pycache__/
 .venv/
 venv/
 env/
+.env
 
 # Environment variables
 .env
@@ -28,6 +29,9 @@ dist/
 # OS files
 .DS_Store
 Thumbs.db
+*.db
+*.sqlite
+*.sqlite3
 
 # Testing / Coverage
 .coverage
@@ -39,6 +43,7 @@ htmlcov/
 
 # Codex / AI tools
 codex/
+.codex
 
 # Misc
 *.swp
