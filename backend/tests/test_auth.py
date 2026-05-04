@@ -266,11 +266,18 @@ async def test_project_list_returns_only_current_user_projects() -> None:
             "/projects",
             headers={"Authorization": f"Bearer {owner_token}"},
         )
+        other_list_response = await client.get(
+            "/projects",
+            headers={"Authorization": f"Bearer {other_token}"},
+        )
 
     assert owner_project_response.status_code == 201
     assert other_project_response.status_code == 201
     assert [project["name"] for project in owner_list_response.json()] == [
         "Owner Project"
+    ]
+    assert [project["name"] for project in other_list_response.json()] == [
+        "Other Project"
     ]
 
 
@@ -298,6 +305,10 @@ async def test_audit_routes_are_limited_to_project_owner() -> None:
             f"/projects/{project_id}/audit/run",
             headers={"Authorization": f"Bearer {owner_token}"},
         )
+        owner_history_response = await client.get(
+            f"/projects/{project_id}/audit/history",
+            headers={"Authorization": f"Bearer {owner_token}"},
+        )
         other_audit_response = await client.post(
             f"/projects/{project_id}/audit/run",
             headers={"Authorization": f"Bearer {other_token}"},
@@ -308,8 +319,12 @@ async def test_audit_routes_are_limited_to_project_owner() -> None:
         )
 
     assert owner_audit_response.status_code == 200
+    assert owner_history_response.status_code == 200
+    assert len(owner_history_response.json()) == 1
     assert other_audit_response.status_code == 404
+    assert other_audit_response.json() == {"detail": "Project not found"}
     assert other_history_response.status_code == 404
+    assert other_history_response.json() == {"detail": "Project not found"}
 
 
 @pytest.mark.asyncio

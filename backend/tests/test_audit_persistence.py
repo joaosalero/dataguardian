@@ -2,11 +2,11 @@ from collections.abc import Generator
 
 import app.models
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api.audit_routes import get_audit_history
 from app.core.database import Base
 from app.models.audit_run import AuditRun
 from app.models.finding import Finding
@@ -49,7 +49,7 @@ def test_audit_run_persists_audit_and_findings(db_session: Session) -> None:
     )
     service = AuditService(db_session)
 
-    result = service.run_project_audit(project_id=created_project.id)
+    result = service.run_project_audit(project_id=created_project.id, user_id=user.id)
 
     audit_run = db_session.query(AuditRun).filter(AuditRun.id == result["audit_id"]).one()
     findings = (
@@ -69,8 +69,9 @@ def test_audit_run_persists_audit_and_findings(db_session: Session) -> None:
     assert all(finding.audit_run_id == result["audit_id"] for finding in findings)
 
 
-@pytest.mark.asyncio
-async def test_audit_history_endpoint_returns_saved_audits(db_session: Session) -> None:
+def test_audit_history_returns_saved_audits_for_project_owner(
+    db_session: Session,
+) -> None:
     user = create_user(db_session)
     audit_service = AuditService(db_session)
     project_service = ProjectService(db_session)
@@ -79,12 +80,13 @@ async def test_audit_history_endpoint_returns_saved_audits(db_session: Session) 
         user.id,
     )
 
-    result = audit_service.run_project_audit(project_id=created_project.id)
-    history = await get_audit_history(
+    result = audit_service.run_project_audit(
         project_id=created_project.id,
-        current_user=user,
-        project_service=project_service,
-        audit_service=audit_service,
+        user_id=user.id,
+    )
+    history = audit_service.get_audit_history(
+        project_id=created_project.id,
+        user_id=user.id,
     )
 
     assert history == [
@@ -97,8 +99,36 @@ async def test_audit_history_endpoint_returns_saved_audits(db_session: Session) 
     ]
 
 
-def create_user(db_session: Session) -> User:
-    user = User(email="owner@example.com", hashed_password="hashed")
+def test_audit_service_blocks_foreign_project_access(db_session: Session) -> None:
+    owner = create_user(db_session, "owner@example.com")
+    other = create_user(db_session, "other@example.com")
+    project_service = ProjectService(db_session)
+    created_project = project_service.create_project(
+        ProjectCreate(name="Private Audit Project", description="Seed"),
+        owner.id,
+    )
+    audit_service = AuditService(db_session)
+
+    with pytest.raises(HTTPException) as run_exc:
+        audit_service.run_project_audit(
+            project_id=created_project.id,
+            user_id=other.id,
+        )
+
+    with pytest.raises(HTTPException) as history_exc:
+        audit_service.get_audit_history(
+            project_id=created_project.id,
+            user_id=other.id,
+        )
+
+    assert run_exc.value.status_code == 404
+    assert run_exc.value.detail == "Project not found"
+    assert history_exc.value.status_code == 404
+    assert history_exc.value.detail == "Project not found"
+
+
+def create_user(db_session: Session, email: str = "owner@example.com") -> User:
+    user = User(email=email, hashed_password="hashed")
     db_session.add(user)
     db_session.commit()
     db_session.refresh(user)

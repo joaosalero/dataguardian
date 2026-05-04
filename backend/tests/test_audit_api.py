@@ -8,21 +8,20 @@ class FakeUser:
     id = 1
 
 
-class FakeProjectService:
-    def __init__(self, exists: bool) -> None:
+class FakeAuditService:
+    def __init__(self, exists: bool = True) -> None:
         self.exists = exists
 
-    def get_project(self, project_id: int, user_id: int) -> dict[str, int]:
+    def run_project_audit(
+        self,
+        project_id: int,
+        user_id: int,
+    ) -> dict[str, int | list[dict[str, str]]]:
         if not self.exists:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Project not found",
             )
-        return {"id": project_id}
-
-
-class FakeAuditService:
-    def run_project_audit(self, project_id: int) -> dict[str, int | list[dict[str, str]]]:
         return {
             "audit_id": 7,
             "score": 80,
@@ -54,7 +53,16 @@ class FakeAuditService:
             ],
         }
 
-    def get_audit_history(self, project_id: int) -> list[dict[str, int | str]]:
+    def get_audit_history(
+        self,
+        project_id: int,
+        user_id: int,
+    ) -> list[dict[str, int | str]]:
+        if not self.exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found",
+            )
         return [
             {
                 "audit_id": 7,
@@ -70,7 +78,6 @@ async def test_audit_runs_successfully() -> None:
     result = await run_audit(
         project_id=1,
         current_user=FakeUser(),
-        project_service=FakeProjectService(exists=True),
         audit_service=FakeAuditService(),
     )
 
@@ -86,8 +93,7 @@ async def test_audit_invalid_project_returns_404() -> None:
         await run_audit(
             project_id=999,
             current_user=FakeUser(),
-            project_service=FakeProjectService(exists=False),
-            audit_service=FakeAuditService(),
+            audit_service=FakeAuditService(exists=False),
         )
 
     assert exc_info.value.status_code == 404
@@ -99,7 +105,6 @@ async def test_audit_history_returns_audits() -> None:
     result = await get_audit_history(
         project_id=1,
         current_user=FakeUser(),
-        project_service=FakeProjectService(exists=True),
         audit_service=FakeAuditService(),
     )
 

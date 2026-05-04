@@ -17,21 +17,18 @@ class AuditService:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    def run_project_audit(self, project_id: int) -> dict[str, int | list[dict[str, str]]]:
+    def run_project_audit(
+        self,
+        project_id: int,
+        user_id: int,
+    ) -> dict[str, int | list[dict[str, str]]]:
         """Run the current rule set and persist the result for audit history.
 
         The schema is simulated for now; live database introspection belongs in a
         future change because it affects permissions, connection handling, and
         data exposure risk.
         """
-        project = self.db.get(Project, project_id)
-        if project is None:
-            logger.warning("Audit failed: project not found project_id=%s", project_id)
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Project not found",
-            )
-
+        project = self._get_project_for_user(project_id, user_id, action="run")
         logger.info("Audit started: project_id=%s", project.id)
         simulated_schema = {
             "users": {
@@ -67,7 +64,8 @@ class AuditService:
             "findings": result["findings"],
         }
 
-    def get_audit_history(self, project_id: int) -> list[dict[str, int | str]]:
+    def get_audit_history(self, project_id: int, user_id: int) -> list[dict[str, int | str]]:
+        self._get_project_for_user(project_id, user_id, action="history")
         audit_runs = (
             self.db.query(AuditRun)
             .filter(AuditRun.project_id == project_id)
@@ -84,6 +82,25 @@ class AuditService:
             }
             for audit_run in audit_runs
         ]
+
+    def _get_project_for_user(self, project_id: int, user_id: int, action: str) -> Project:
+        project = (
+            self.db.query(Project)
+            .filter(Project.id == project_id, Project.user_id == user_id)
+            .one_or_none()
+        )
+        if project is None:
+            logger.warning(
+                "Audit access denied: action=%s project_id=%s user_id=%s",
+                action,
+                project_id,
+                user_id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found",
+            )
+        return project
 
     def _persist_audit_result(
         self,
