@@ -93,8 +93,12 @@ run_secret_scan() {
           findings=1
         fi
       fi
+      if [[ "$line" == *"BEGIN PRIVATE KEY"* || "$line" == *"BEGIN RSA PRIVATE KEY"* ]]; then
+        printf '[FAIL] Private key material detected: %s:%s value=<redacted>\n' "$file" "$line_number"
+        findings=1
+      fi
     done < "$file"
-  done < <(git ls-files -z)
+  done < <(git ls-files --cached --others --exclude-standard -z)
 
   if [ "$findings" -eq 0 ]; then
     print_result "Secret scan" "PASS"

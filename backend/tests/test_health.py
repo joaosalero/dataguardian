@@ -25,6 +25,22 @@ async def test_health_check_returns_ok() -> None:
 
 
 @pytest.mark.asyncio
+async def test_development_allows_plain_http() -> None:
+    original_environment = settings.environment
+    object.__setattr__(settings, "environment", "dev")
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as client:
+            response = await client.get("/health")
+    finally:
+        object.__setattr__(settings, "environment", original_environment)
+
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_health_check_includes_security_headers() -> None:
     async with AsyncClient(
         transport=ASGITransport(app=app),

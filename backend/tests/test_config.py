@@ -42,7 +42,24 @@ def test_development_allows_local_default_secret(monkeypatch: pytest.MonkeyPatch
 def test_production_requires_fernet_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENVIRONMENT", "prod")
     monkeypatch.setenv("SECRET_KEY", "a-production-secret-key-with-safe-length")
-    monkeypatch.delenv("FERNET_KEY", raising=False)
+    monkeypatch.setenv("JWT_PRIVATE_KEY", "private-key-placeholder")
+    monkeypatch.setenv("JWT_PUBLIC_KEY", "public-key-placeholder")
+    monkeypatch.delenv("ENCRYPTION_KEY", raising=False)
 
-    with pytest.raises(ValueError, match="FERNET_KEY"):
+    with pytest.raises(ValueError, match="ENCRYPTION_KEY"):
         Settings.from_env()
+
+
+def test_production_requires_jwt_key_pair(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "prod")
+    monkeypatch.setenv("SECRET_KEY", "a-production-secret-key-with-safe-length")
+    monkeypatch.setenv("ENCRYPTION_KEY", "fernet-key-placeholder")
+    monkeypatch.delenv("JWT_PRIVATE_KEY", raising=False)
+    monkeypatch.delenv("JWT_PUBLIC_KEY", raising=False)
+
+    with pytest.raises(ValueError, match="JWT_PRIVATE_KEY"):
+        Settings.from_env()
+
+
+def test_default_jwt_algorithm_is_rs256() -> None:
+    assert settings.algorithm == "RS256"

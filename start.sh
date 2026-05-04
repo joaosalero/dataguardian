@@ -6,6 +6,7 @@ BACKEND_LOG="$ROOT_DIR/.logs/backend.log"
 FRONTEND_LOG="$ROOT_DIR/.logs/frontend.log"
 BACKEND_PID=""
 FRONTEND_PID=""
+MODE="${1:-}"
 
 mkdir -p "$ROOT_DIR/.logs"
 
@@ -22,15 +23,33 @@ port_pids() {
   fi
 }
 
-free_port() {
+describe_port_owner() {
   local port="$1"
+  local pids="$2"
+  if command -v ps >/dev/null 2>&1; then
+    ps -o pid=,comm= -p $pids 2>/dev/null || true
+  fi
+}
+
+require_port_available_or_dataguardian() {
+  local port="$1"
+  local url="$2"
+  local label="$3"
   local pids
   pids="$(port_pids "$port")"
-  if [ -n "$pids" ]; then
-    log "Stopping process on port $port"
-    kill $pids 2>/dev/null || true
-    sleep 1
+  if [ -z "$pids" ]; then
+    return 0
   fi
+
+  if curl -fsS "$url" >/dev/null 2>&1; then
+    log "$label already appears to be running on port $port; reusing it"
+    return 1
+  fi
+
+  log "Port $port is already in use by a non-DataGuardian process:"
+  describe_port_owner "$port" "$pids"
+  log "Stop that process manually, then rerun ./start.sh ${MODE:-manual}"
+  exit 1
 }
 
 wait_for_url() {
@@ -53,7 +72,9 @@ start_postgres() {
 }
 
 start_backend() {
-  free_port 8000
+  if ! require_port_available_or_dataguardian 8000 "http://localhost:8000/health" "Backend"; then
+    return 0
+  fi
   log "Starting backend on http://localhost:8000"
   (
     cd "$ROOT_DIR/backend"
@@ -64,7 +85,9 @@ start_backend() {
 }
 
 start_frontend() {
-  free_port 3000
+  if ! require_port_available_or_dataguardian 3000 "http://localhost:3000/login" "Frontend"; then
+    return 0
+  fi
   log "Starting frontend on http://localhost:3000"
   (
     cd "$ROOT_DIR/frontend"
@@ -110,7 +133,7 @@ auto_mode() {
   log "Automatic mode completed"
 }
 
-case "${1:-}" in
+case "$MODE" in
   manual)
     manual_mode
     ;;

@@ -38,7 +38,7 @@ Backend:
 - SQLAlchemy
 - PostgreSQL
 - Argon2 via `argon2-cffi`
-- JWT signing via `python-jose`
+- RS256 JWT signing via `python-jose`
 - Fernet encryption via `cryptography`
 - Pytest
 
@@ -87,11 +87,23 @@ ENVIRONMENT=dev
 DEBUG=true
 SECRET_KEY=development-only-secret-key-change-before-production
 DATABASE_URL=postgresql://dataguardian:dataguardian@localhost:5434/dataguardian
-ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 ```
 
-`.env` is ignored by Git and must never be committed.
+`.env` is ignored by Git and must never be committed. Development and test can run without JWT key variables; the backend creates an ephemeral in-memory key pair for local sessions only. Production must use environment-provided keys.
+
+Required production environment variables:
+
+```text
+ENVIRONMENT=prod
+SECRET_KEY=<strong app secret from your secret manager>
+JWT_PRIVATE_KEY=<PEM private key from your secret manager>
+JWT_PUBLIC_KEY=<matching PEM public key from your secret manager>
+ENCRYPTION_KEY=<Fernet key from your secret manager>
+DATABASE_URL=<production database URL from your secret manager>
+```
+
+Do not commit these values. Store them in a platform secret manager, deployment environment, or CI secret store.
 
 ## Usage Modes
 
@@ -113,7 +125,7 @@ Automatic mode runs the local security checks, starts services, runs the runtime
 ./start.sh auto
 ```
 
-`start.sh` detects port conflicts on `3000` and `8000` and stops the process bound to those app ports before starting DataGuardian services.
+`start.sh` detects port conflicts on `3000` and `8000`. If DataGuardian is already responding on a port, the script reuses it. If another process owns the port, the script stops and prints instructions; it does not kill unrelated processes or silently change ports.
 
 ## Default Test Credentials
 
@@ -157,6 +169,9 @@ Password security:
 JWT session security:
 
 - JWTs include `sub`, `iat`, and `exp`.
+- JWTs are signed with RS256.
+- `JWT_PRIVATE_KEY` and `JWT_PUBLIC_KEY` must come from environment variables in production.
+- The signing algorithm is pinned to RS256 and is not downgraded by local `.env` values.
 - Tokens are short-lived; default expiration is 30 minutes.
 - Invalid tokens return a generic authentication error.
 - Tokens are not logged.
@@ -173,11 +188,20 @@ HTTPS strategy:
 - Development and test mode allow HTTP on localhost.
 - Production mode rejects non-HTTPS requests.
 - Reverse proxies should pass `X-Forwarded-Proto: https`.
+- Real TLS must be terminated by infrastructure such as Nginx, Caddy, Traefik, a cloud load balancer, or another reverse proxy. The app does not fake HTTPS.
+
+Rate limiting:
+
+- `/auth/login` and `/auth/register` use in-memory rate limiting.
+- Defaults are controlled by `AUTH_RATE_LIMIT_MAX_REQUESTS` and `AUTH_RATE_LIMIT_WINDOW_SECONDS`.
+- Limit failures return HTTP `429` with a generic response.
+- In-memory limits are suitable for one process; production deployments with multiple app instances should use a shared limiter such as Redis.
 
 Database security:
 
 - Sensitive user metadata is encrypted with Fernet.
-- Production requires `FERNET_KEY`.
+- Production requires `ENCRYPTION_KEY`.
+- Fernet is not used for passwords.
 - Encryption keys must come from environment variables and must not be committed.
 
 ## Security Checks And Audit
@@ -265,7 +289,7 @@ Port already in use:
 ./start.sh manual
 ```
 
-The start script attempts to stop processes bound to ports `3000` and `8000`. If another service keeps restarting on those ports, stop it manually and rerun the command.
+The start script does not kill unrelated processes. If a non-DataGuardian process owns port `3000` or `8000`, stop that process manually and rerun the command.
 
 Docker is not running:
 
@@ -280,6 +304,18 @@ Backend cannot connect to PostgreSQL:
 - Confirm Docker is running.
 - Confirm `docker compose ps` shows the database container.
 - Confirm `DATABASE_URL` uses local port `5434` for Docker Compose.
+
+Missing production keys:
+
+- Set `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `SECRET_KEY`, and `ENCRYPTION_KEY` through your secret manager.
+- Ensure PEM newlines are preserved, or provide escaped newlines as `\n`.
+- Do not paste real keys into tracked files.
+
+HTTPS production setup:
+
+- Terminate TLS at a reverse proxy or load balancer.
+- Forward requests to the FastAPI app over the private network.
+- Preserve `X-Forwarded-Proto: https`; production requests without HTTPS are rejected.
 
 Missing dependencies:
 

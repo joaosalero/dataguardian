@@ -1,15 +1,23 @@
 from collections.abc import AsyncGenerator, Generator
+from datetime import timedelta
 import logging
 
 import app.models
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from httpx import ASGITransport, AsyncClient
 from jose import jwt
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.auth import create_access_token, hash_password, verify_password
+from app.auth import (
+    create_access_token,
+    hash_password,
+    reset_rate_limits,
+    verify_password,
+)
 from app.core.config import settings
 from app.core.database import Base, get_db
 from app.main import app
@@ -26,6 +34,7 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 @pytest.fixture(autouse=True)
 def setup_database() -> Generator[None, None, None]:
+    reset_rate_limits()
     Base.metadata.create_all(bind=engine)
     app.dependency_overrides[get_db] = override_get_db
     yield
@@ -115,12 +124,78 @@ def test_password_hashing_uses_argon2() -> None:
 
 def test_jwt_contains_hardened_claims() -> None:
     token = create_access_token({"sub": 123})
-    payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+    from app.security.jwt_keys import get_jwt_public_key
+
+    payload = jwt.decode(token, get_jwt_public_key(), algorithms=[settings.algorithm])
 
     assert payload["sub"] == "123"
     assert "exp" in payload
     assert "iat" in payload
     assert "user_id" not in payload
+
+
+@pytest.mark.asyncio
+async def test_valid_token_allows_current_user() -> None:
+    user = create_user("owner@example.com")
+    token = create_access_token({"sub": user.id})
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get(
+            "/auth/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["email"] == "owner@example.com"
+
+
+@pytest.mark.asyncio
+async def test_expired_token_returns_generic_error() -> None:
+    user = create_user("owner@example.com")
+    token = create_access_token({"sub": user.id}, expires_delta=timedelta(seconds=-1))
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get(
+            "/auth/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid authentication credentials"}
+
+
+@pytest.mark.asyncio
+async def test_invalid_signature_returns_generic_error() -> None:
+    create_user("owner@example.com")
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode()
+    forged_token = jwt.encode(
+        {"sub": "1"},
+        private_pem,
+        algorithm=settings.algorithm,
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get(
+            "/auth/me",
+            headers={"Authorization": f"Bearer {forged_token}"},
+        )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid authentication credentials"}
 
 
 @pytest.mark.asyncio
@@ -169,21 +244,80 @@ async def test_register_rejects_weak_password_and_duplicate_user() -> None:
 
 
 @pytest.mark.asyncio
-async def test_bearer_fallback_still_supports_api_clients() -> None:
-    user = create_user("owner@example.com")
-    token = create_access_token({"sub": user.id})
+async def test_login_rate_limit_triggers_generic_429() -> None:
+    original_limit = settings.auth_rate_limit_max_requests
+    original_window = settings.auth_rate_limit_window_seconds
+    object.__setattr__(settings, "auth_rate_limit_max_requests", 2)
+    object.__setattr__(settings, "auth_rate_limit_window_seconds", 60)
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as client:
+            first_response = await client.post(
+                "/auth/login",
+                json={"username": "missing@example.com", "password": "wrong-password"},
+            )
+            second_response = await client.post(
+                "/auth/login",
+                json={"username": "missing@example.com", "password": "wrong-password"},
+            )
+            limited_response = await client.post(
+                "/auth/login",
+                json={"username": "missing@example.com", "password": "wrong-password"},
+            )
+    finally:
+        object.__setattr__(settings, "auth_rate_limit_max_requests", original_limit)
+        object.__setattr__(settings, "auth_rate_limit_window_seconds", original_window)
+
+    assert first_response.status_code == 401
+    assert second_response.status_code == 401
+    assert limited_response.status_code == 429
+    assert limited_response.json() == {"detail": "Too many requests"}
+
+
+@pytest.mark.asyncio
+async def test_register_rate_limit_triggers() -> None:
+    original_limit = settings.auth_rate_limit_max_requests
+    original_window = settings.auth_rate_limit_window_seconds
+    object.__setattr__(settings, "auth_rate_limit_max_requests", 1)
+    object.__setattr__(settings, "auth_rate_limit_window_seconds", 60)
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as client:
+            first_response = await client.post(
+                "/auth/register",
+                json={"username": "first@example.com", "password": "StrongPass123"},
+            )
+            limited_response = await client.post(
+                "/auth/register",
+                json={"username": "second@example.com", "password": "StrongPass123"},
+            )
+    finally:
+        object.__setattr__(settings, "auth_rate_limit_max_requests", original_limit)
+        object.__setattr__(settings, "auth_rate_limit_window_seconds", original_window)
+
+    assert first_response.status_code == 201
+    assert limited_response.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_normal_login_flow_allowed_before_rate_limit() -> None:
+    create_user("owner@example.com")
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://testserver",
     ) as client:
-        response = await client.get(
-            "/auth/me",
-            headers={"Authorization": f"Bearer {token}"},
+        response = await client.post(
+            "/auth/login",
+            json={"username": "owner@example.com", "password": "strong-password"},
         )
 
     assert response.status_code == 200
-    assert response.json()["email"] == "owner@example.com"
+    assert response.json() == {"message": "Authenticated"}
 
 
 @pytest.mark.asyncio

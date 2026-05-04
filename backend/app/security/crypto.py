@@ -12,7 +12,7 @@ _runtime_fernet_key = Fernet.generate_key()
 
 
 def _get_fernet() -> Fernet:
-    key = settings.fernet_key.encode() if settings.fernet_key else _runtime_fernet_key
+    key = settings.encryption_key.encode() if settings.encryption_key else _runtime_fernet_key
     return Fernet(key)
 
 

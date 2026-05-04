@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta, timezone
 import logging
+import time
 from typing import Any
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, VerificationError
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel, Field
@@ -14,12 +15,14 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.user import User
 from app.security.crypto import encrypt_text
+from app.security.jwt_keys import get_jwt_private_key, get_jwt_public_key
 
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 bearer_scheme = HTTPBearer(auto_error=False)
 password_hasher = PasswordHasher()
+_rate_limit_attempts: dict[str, list[float]] = {}
 
 
 class LoginRequest(BaseModel):
@@ -57,13 +60,18 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
-def create_access_token(data: dict[str, Any]) -> str:
+def create_access_token(
+    data: dict[str, Any],
+    expires_delta: timedelta | None = None,
+) -> str:
     """Create a short-lived signed JWT containing only non-sensitive claims."""
     issued_at = datetime.now(timezone.utc)
-    expires_at = issued_at + timedelta(minutes=settings.access_token_expire_minutes)
+    expires_at = issued_at + (
+        expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
+    )
     subject = str(data["sub"])
     payload = {"sub": subject, "iat": issued_at, "exp": expires_at}
-    return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+    return jwt.encode(payload, get_jwt_private_key(), algorithm=settings.algorithm)
 
 
 def validate_password_strength(password: str) -> None:
@@ -82,6 +90,30 @@ def validate_password_strength(password: str) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Password must include a number",
         )
+
+
+def reset_rate_limits() -> None:
+    _rate_limit_attempts.clear()
+
+
+def enforce_auth_rate_limit(request: Request, action: str) -> None:
+    client_host = request.client.host if request.client else "unknown"
+    key = f"{action}:{client_host}"
+    now = time.monotonic()
+    window_start = now - settings.auth_rate_limit_window_seconds
+    attempts = [
+        attempt
+        for attempt in _rate_limit_attempts.get(key, [])
+        if attempt >= window_start
+    ]
+    if len(attempts) >= settings.auth_rate_limit_max_requests:
+        _rate_limit_attempts[key] = attempts
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests",
+        )
+    attempts.append(now)
+    _rate_limit_attempts[key] = attempts
 
 
 def set_auth_cookie(response: Response, token: str) -> None:
@@ -142,7 +174,7 @@ async def get_current_user(
     try:
         payload = jwt.decode(
             token,
-            settings.secret_key,
+            get_jwt_public_key(),
             algorithms=[settings.algorithm],
         )
         user_id = int(payload["sub"])
@@ -177,9 +209,11 @@ async def get_current_user(
 )
 async def login(
     payload: LoginRequest,
+    request: Request,
     response: Response,
     db: Session = Depends(get_db),
 ) -> AuthResponse:
+    enforce_auth_rate_limit(request, "login")
     username = payload.username.strip().lower()
     user = db.query(User).filter(User.email == username).one_or_none()
     if user is None or not verify_password(payload.password, user.hashed_password):
@@ -207,7 +241,12 @@ async def login(
         409: {"description": "User already exists."},
     },
 )
-async def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> User:
+async def register(
+    payload: RegisterRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> User:
+    enforce_auth_rate_limit(request, "register")
     username = payload.username.strip().lower()
     validate_password_strength(payload.password)
     existing_user = db.query(User).filter(User.email == username).one_or_none()
