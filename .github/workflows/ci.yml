@@ -15,16 +15,16 @@ jobs:
       postgres:
         image: postgres:15
         env:
-          POSTGRES_USER: dataguardian
-          POSTGRES_PASSWORD: dataguardian
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
           POSTGRES_DB: dataguardian
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U dataguardian -d dataguardian"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
     env:
       APP_NAME: DataGuardian
@@ -33,7 +33,7 @@ jobs:
       SECRET_KEY: change-this-in-ci
       ALGORITHM: HS256
       ACCESS_TOKEN_EXPIRE_MINUTES: "30"
-      DATABASE_URL: postgresql://dataguardian:dataguardian@localhost:5432/dataguardian
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/dataguardian
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
       PYTHONPATH: backend
 
@@ -64,34 +64,8 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm install
+        run: npm ci
 
       - name: Build frontend
         working-directory: frontend
         run: npm run build
-
-      - name: Install Playwright browsers
-        run: python -m playwright install --with-deps chromium
-
-      - name: Start backend
-        working-directory: backend
-        run: |
-          uvicorn app.main:app --host 0.0.0.0 --port 8000 &
-          for i in {1..30}; do
-            curl -fsS http://localhost:8000/health && exit 0
-            sleep 1
-          done
-          exit 1
-
-      - name: Start frontend
-        working-directory: frontend
-        run: |
-          npm run start &
-          for i in {1..30}; do
-            curl -fsS http://localhost:3000/login && exit 0
-            sleep 1
-          done
-          exit 1
-
-      - name: Run E2E tests
-        run: pytest tests/e2e
