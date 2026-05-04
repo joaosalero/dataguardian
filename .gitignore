@@ -8,7 +8,7 @@ __pycache__/
 .venv/
 venv/
 env/
-.env
+
 
 # Environment variables
 .env
@@ -29,9 +29,6 @@ dist/
 # OS files
 .DS_Store
 Thumbs.db
-*.db
-*.sqlite
-*.sqlite3
 
 # Testing / Coverage
 .coverage
@@ -39,6 +36,8 @@ htmlcov/
 .pytest_cache/
 
 # Database (local/testing)
+*.db
+*.sqlite
 *.sqlite3
 
 # Codex / AI tools
@@ -48,3 +47,7 @@ codex/
 # Misc
 *.swp
 *.bak
+
+# playwright
+/playwright-report/
+/test-results/
