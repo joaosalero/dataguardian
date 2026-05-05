@@ -114,3 +114,8 @@ backend-legacy-python/
 .codex/
 codex/
 .agents/.codex
+.codex
+.agents
+.logs
+.venv
+.env
