@@ -14,6 +14,23 @@ The current release focuses on the production foundations that matter first:
 secure authentication, deterministic local execution, automated validation,
 dependency hygiene, and a clear path from developer laptop to CI.
 
+## Project Status
+
+MVP stable (under active development)
+
+Core features are functional:
+- File analysis (PDF, images)
+- URL analysis (safe remote inspection)
+- Metadata extraction and classification
+- Deterministic findings and risk scoring
+- Clean file (sanitized output generation)
+
+Known limitations:
+- UX improvements in progress
+- Clean file download not yet exposed in UI
+- Project management UX will be simplified
+- Pagination and filtering not implemented yet
+
 ## Product Perspective
 
 DataGuardian is aimed at engineers, security-minded teams, and technical
