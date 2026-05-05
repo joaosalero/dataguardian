@@ -61,3 +61,6 @@ dist/
 node_modules/
 .pytest_cache/*.tar.gz
 go*.tar.gz
+.logs/
+dist/
+.env
