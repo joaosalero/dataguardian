@@ -71,7 +71,6 @@ def run_go_auth_flow(page: Page) -> None:
         page.get_by_role("button", name="Create project").click()
     project_response = project_response_info.value
     assert_response_ok(project_response, "project creation")
-    project_id = int(project_response.json()["id"])
     page.goto(f"{FRONTEND_URL}/dashboard", wait_until="networkidle")
     expect(page.get_by_text(project_name).first).to_be_visible(timeout=10_000)
 
@@ -81,32 +80,32 @@ def run_go_auth_flow(page: Page) -> None:
         b"<< /Author (E2E User) /OpenAction << /JS (JavaScript) >> >>\n"
         b"%%EOF"
     )
-    file_response = page.context.request.post(
-        f"{BACKEND_URL}/analyses",
-        multipart={
-            "projectId": str(project_id),
-            "inputType": "FILE",
-            "file": {
-                "name": "e2e-sample.pdf",
-                "mimeType": "application/pdf",
-                "buffer": pdf_bytes,
-            },
-        },
+    page.get_by_label("Analysis file").set_input_files(
+        {
+            "name": "e2e-sample.pdf",
+            "mimeType": "application/pdf",
+            "buffer": pdf_bytes,
+        }
     )
+    with page.expect_response(
+        lambda response: response.url == f"{BACKEND_URL}/analyses"
+        and response.request.method == "POST"
+    ) as file_response_info:
+        page.get_by_role("button", name="Analyze File").click()
+    file_response = file_response_info.value
     assert_ok(file_response, "file analysis")
     file_analysis = file_response.json()
     assert file_analysis["findings"], "file analysis should include findings"
     assert file_analysis["riskScore"]["level"], "file analysis should include risk score"
 
     log("Creating URL analysis with authenticated browser session")
-    url_response = page.context.request.post(
-        f"{BACKEND_URL}/analyses",
-        data={
-            "projectId": project_id,
-            "inputType": "URL",
-            "url": {"originalUrl": "http://93.184.216.34"},
-        },
-    )
+    page.get_by_label("URL to analyze").fill("http://93.184.216.34")
+    with page.expect_response(
+        lambda response: response.url == f"{BACKEND_URL}/analyses"
+        and response.request.method == "POST"
+    ) as url_response_info:
+        page.get_by_role("button", name="Analyze URL").click()
+    url_response = url_response_info.value
     assert_ok(url_response, "URL analysis")
     url_analysis = url_response.json()
     assert url_analysis["findings"], "URL analysis should include findings"

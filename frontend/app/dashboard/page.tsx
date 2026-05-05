@@ -96,9 +96,13 @@ export default function DashboardPage() {
   const [selectedProjectID, setSelectedProjectID] = useState<number | null>(null);
   const [projectName, setProjectName] = useState("");
   const [projectTarget, setProjectTarget] = useState("");
+  const [analysisFile, setAnalysisFile] = useState<File | null>(null);
+  const [analysisURL, setAnalysisURL] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [auditing, setAuditing] = useState(false);
+  const [analyzingFile, setAnalyzingFile] = useState(false);
+  const [analyzingURL, setAnalyzingURL] = useState(false);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const [error, setError] = useState("");
 
@@ -265,6 +269,68 @@ export default function DashboardPage() {
     }
   }
 
+  async function analyzeFile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedProjectID || !analysisFile) {
+      return;
+    }
+    setError("");
+    setAnalyzingFile(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("projectId", String(selectedProjectID));
+      formData.append("inputType", "FILE");
+      formData.append("file", analysisFile);
+
+      const response = await fetch(`${API_BASE_URL}/analyses`, {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
+      setAnalysisFile(null);
+      await fetchAnalyses();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not analyze file.");
+    } finally {
+      setAnalyzingFile(false);
+    }
+  }
+
+  async function analyzeURL(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedProjectID || !analysisURL.trim()) {
+      return;
+    }
+    setError("");
+    setAnalyzingURL(true);
+
+    try {
+      const response = await apiFetch("/analyses", {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: selectedProjectID,
+          inputType: "URL",
+          url: {
+            originalUrl: analysisURL.trim(),
+          },
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
+      setAnalysisURL("");
+      await fetchAnalyses();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not analyze URL.");
+    } finally {
+      setAnalyzingURL(false);
+    }
+  }
+
   async function logout() {
     await apiFetch("/auth/logout", { method: "POST" }).catch(() => undefined);
     router.push("/login");
@@ -373,6 +439,59 @@ export default function DashboardPage() {
             ) : null}
           </section>
         </div>
+
+        <section className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+          <div>
+            <h2 className="text-base font-semibold text-gray-950">Run Analysis</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              {selectedProject
+                ? `New analyses will be saved to ${selectedProject.name}.`
+                : "Create or select a project before running an analysis."}
+            </p>
+          </div>
+
+          <div className="mt-5 grid gap-5 lg:grid-cols-2">
+            <form className="space-y-4" onSubmit={analyzeFile}>
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700">Analysis file</span>
+                <input
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900"
+                  disabled={analyzingFile || !selectedProjectID}
+                  onChange={(event) => setAnalysisFile(event.target.files?.[0] ?? null)}
+                  type="file"
+                />
+              </label>
+              <button
+                className="rounded-md bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+                disabled={analyzingFile || !selectedProjectID || !analysisFile}
+                type="submit"
+              >
+                {analyzingFile ? "Analyzing file..." : "Analyze File"}
+              </button>
+            </form>
+
+            <form className="space-y-4" onSubmit={analyzeURL}>
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700">URL to analyze</span>
+                <input
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900"
+                  disabled={analyzingURL || !selectedProjectID}
+                  onChange={(event) => setAnalysisURL(event.target.value)}
+                  placeholder="https://example.com"
+                  type="url"
+                  value={analysisURL}
+                />
+              </label>
+              <button
+                className="rounded-md bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+                disabled={analyzingURL || !selectedProjectID || !analysisURL.trim()}
+                type="submit"
+              >
+                {analyzingURL ? "Analyzing URL..." : "Analyze URL"}
+              </button>
+            </form>
+          </div>
+        </section>
 
         <section className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
