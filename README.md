@@ -254,9 +254,17 @@ Authenticated product routes:
 - `GET /projects/{id}`: fetch one project owned by the signed-in user.
 - `POST /projects/{id}/audit`: run and store a baseline audit result.
 - `GET /projects/{id}/audits`: list audit results for a project.
+- `GET /analyses`: list file and URL analysis history for the signed-in user.
 - `POST /analyses`: create a file analysis from a multipart upload, or a URL
   analysis from a JSON body.
 - `GET /analyses/{id}`: fetch a completed file or URL analysis result.
+
+The authenticated dashboard shows project audit results and a flat analysis
+history. Analysis rows include target type, status, risk level, and timestamp.
+Selecting an analysis loads the existing `GET /analyses/{id}` result and shows
+summary, findings, metadata, risk score, and clean-file status when available.
+The history endpoint is scoped through the signed-in user's projects, so users
+only see analyses attached to projects they own.
 
 ### File Analysis
 

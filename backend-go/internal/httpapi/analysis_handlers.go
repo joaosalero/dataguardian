@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -110,6 +111,48 @@ func (s *server) createURLAnalysis(w http.ResponseWriter, r *http.Request, paylo
 	}
 
 	writeJSON(w, http.StatusCreated, buildURLAnalysisResponse(completed, createdTarget, metadata, findings, riskScore))
+}
+
+func (s *server) listAnalyses(w http.ResponseWriter, r *http.Request) {
+	userID, ok := userIDFromContext(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"detail": "Invalid authentication credentials"})
+		return
+	}
+	projects, err := s.store.ProjectsByUser(r.Context(), userID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return
+	}
+
+	items := make([]AnalysisListItem, 0)
+	for _, project := range projects {
+		analyses, err := s.store.ListAnalysesByProject(r.Context(), userID, project.ID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+			return
+		}
+		for _, analysis := range analyses {
+			riskScore, err := s.store.RiskScoreByAnalysisID(r.Context(), analysis.ID)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+				return
+			}
+			items = append(items, AnalysisListItem{
+				AnalysisID: analysis.ID,
+				ProjectID:  analysis.ProjectID,
+				InputType:  analysis.InputType,
+				Status:     analysis.Status,
+				RiskLevel:  riskScore.Level,
+				CreatedAt:  analysis.StartedAt,
+			})
+		}
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].CreatedAt.After(items[j].CreatedAt)
+	})
+
+	writeJSON(w, http.StatusOK, map[string]any{"analyses": items})
 }
 
 func (s *server) createFileAnalysis(w http.ResponseWriter, r *http.Request) {

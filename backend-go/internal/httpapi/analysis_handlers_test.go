@@ -28,6 +28,7 @@ func TestAnalysisRoutesExistAndRequireAuth(t *testing.T) {
 		path   string
 		body   string
 	}{
+		{method: http.MethodGet, path: "/analyses"},
 		{method: http.MethodPost, path: "/analyses", body: `{"projectId":1,"inputType":"URL","url":{"originalUrl":"https://example.com"}}`},
 		{method: http.MethodGet, path: "/analyses/1"},
 	} {
@@ -266,6 +267,50 @@ func TestCreateURLAnalysisRejectsInvalidURL(t *testing.T) {
 	}
 }
 
+func TestListAnalysesReturnsUserScopedHistory(t *testing.T) {
+	store := newFakeAnalysisStore()
+	first := time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC)
+	second := first.Add(time.Hour)
+	store.projects = []db.Project{
+		{ID: 7, UserID: 42, Name: "Project A", Target: "db-a"},
+		{ID: 8, UserID: 42, Name: "Project B", Target: "db-b"},
+	}
+	store.analysesByProject = map[int64][]db.Analysis{
+		7: {
+			{ID: 99, ProjectID: 7, InputType: db.InputTypeFile, Status: db.AnalysisStatusCompleted, StartedAt: first},
+		},
+		8: {
+			{ID: 100, ProjectID: 8, InputType: db.InputTypeURL, Status: db.AnalysisStatusCompleted, StartedAt: second},
+		},
+	}
+	store.riskScores = map[int64]db.RiskScore{
+		99:  {AnalysisID: 99, Level: db.RiskLevelMedium},
+		100: {AnalysisID: 100, Level: db.RiskLevelHigh},
+	}
+	srv := &server{store: store}
+	req := httptest.NewRequest(http.MethodGet, "/analyses", nil)
+	req = req.WithContext(withUserID(req.Context(), 42))
+	rec := httptest.NewRecorder()
+
+	srv.listAnalyses(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("listAnalyses returned %d with body %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		Analyses []AnalysisListItem `json:"analyses"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("response JSON did not decode: %v", err)
+	}
+	if len(payload.Analyses) != 2 {
+		t.Fatalf("expected two analyses, got %#v", payload.Analyses)
+	}
+	if payload.Analyses[0].AnalysisID != 100 || payload.Analyses[0].RiskLevel != db.RiskLevelHigh {
+		t.Fatalf("expected newest high-risk URL first, got %#v", payload.Analyses[0])
+	}
+}
+
 func TestGetURLAnalysisSuccess(t *testing.T) {
 	store := newFakeAnalysisStore()
 	now := time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC)
@@ -420,13 +465,16 @@ func multipartAnalysisBody(t *testing.T, fields map[string]string, filename stri
 }
 
 type fakeAnalysisStore struct {
-	analysis    db.Analysis
-	createdFile db.File
-	urlTarget   db.URLTarget
-	metadata    db.Metadata
-	findings    []db.Finding
-	riskScore   db.RiskScore
-	cleanFile   db.CleanFile
+	analysis          db.Analysis
+	createdFile       db.File
+	urlTarget         db.URLTarget
+	metadata          db.Metadata
+	findings          []db.Finding
+	riskScore         db.RiskScore
+	riskScores        map[int64]db.RiskScore
+	cleanFile         db.CleanFile
+	projects          []db.Project
+	analysesByProject map[int64][]db.Analysis
 }
 
 func newFakeAnalysisStore() *fakeAnalysisStore {
@@ -454,6 +502,9 @@ func (f *fakeAnalysisStore) CreateProject(ctx context.Context, userID int64, nam
 }
 
 func (f *fakeAnalysisStore) ProjectsByUser(ctx context.Context, userID int64) ([]db.Project, error) {
+	if f.projects != nil {
+		return f.projects, nil
+	}
 	return []db.Project{{ID: 7, UserID: userID, Name: "Project", Target: "Target"}}, nil
 }
 
@@ -491,6 +542,9 @@ func (f *fakeAnalysisStore) GetAnalysisByID(ctx context.Context, userID int64, a
 }
 
 func (f *fakeAnalysisStore) ListAnalysesByProject(ctx context.Context, userID int64, projectID int64) ([]db.Analysis, error) {
+	if f.analysesByProject != nil {
+		return f.analysesByProject[projectID], nil
+	}
 	return []db.Analysis{f.analysis}, nil
 }
 
@@ -547,6 +601,9 @@ func (f *fakeAnalysisStore) SaveRiskScore(ctx context.Context, score db.RiskScor
 }
 
 func (f *fakeAnalysisStore) RiskScoreByAnalysisID(ctx context.Context, analysisID int64) (db.RiskScore, error) {
+	if f.riskScores != nil {
+		return f.riskScores[analysisID], nil
+	}
 	return f.riskScore, nil
 }
 

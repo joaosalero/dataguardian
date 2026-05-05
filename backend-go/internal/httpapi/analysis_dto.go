@@ -47,6 +47,16 @@ type AnalysisResponse struct {
 	CleanFile     *AnalysisCleanFileReference `json:"cleanFile"`
 }
 
+// AnalysisListItem is the compact history row returned by GET /analyses.
+type AnalysisListItem struct {
+	AnalysisID int64             `json:"analysisId"`
+	ProjectID  int64             `json:"projectId"`
+	InputType  db.InputType      `json:"inputType"`
+	Status     db.AnalysisStatus `json:"status"`
+	RiskLevel  db.RiskLevel      `json:"riskLevel"`
+	CreatedAt  time.Time         `json:"createdAt"`
+}
+
 // AnalysisFileReference describes the original file in an analysis response.
 type AnalysisFileReference struct {
 	ID               int64   `json:"id"`

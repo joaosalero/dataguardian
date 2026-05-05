@@ -21,6 +21,56 @@ type Audit = {
   created_at: string;
 };
 
+type AnalysisListItem = {
+  analysisId: number;
+  projectId: number;
+  inputType: "FILE" | "URL";
+  status: string;
+  riskLevel: "LOW" | "MEDIUM" | "HIGH";
+  createdAt: string;
+};
+
+type AnalysisFinding = {
+  id: number;
+  code: string;
+  title: string;
+  description: string;
+  severity: string;
+};
+
+type MetadataEntry = {
+  key: string;
+  value: unknown;
+  category: string;
+  sensitivity: string;
+  source: string;
+  confidence: string;
+};
+
+type AnalysisDetail = {
+  analysisId: number;
+  projectId: number;
+  inputType: "FILE" | "URL";
+  status: string;
+  summary: string;
+  findings: AnalysisFinding[];
+  metadata: {
+    entries: MetadataEntry[];
+  };
+  riskScore: {
+    score: number;
+    level: "LOW" | "MEDIUM" | "HIGH";
+  };
+  cleanFile: null | {
+    filename: string;
+    mimeType: string;
+    sizeBytes: number;
+    checksumSha256: string;
+    cleaningStatus: string;
+    removedMetadataKeys: string[];
+  };
+};
+
 async function parseError(response: Response) {
   const text = await response.text();
   if (!text) {
@@ -39,12 +89,15 @@ export default function DashboardPage() {
   const [email, setEmail] = useState("");
   const [projects, setProjects] = useState<Project[]>([]);
   const [audits, setAudits] = useState<Audit[]>([]);
+  const [analyses, setAnalyses] = useState<AnalysisListItem[]>([]);
+  const [selectedAnalysis, setSelectedAnalysis] = useState<AnalysisDetail | null>(null);
   const [selectedProjectID, setSelectedProjectID] = useState<number | null>(null);
   const [projectName, setProjectName] = useState("");
   const [projectTarget, setProjectTarget] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [auditing, setAuditing] = useState(false);
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const [error, setError] = useState("");
 
   const selectedProject = useMemo(
@@ -77,6 +130,7 @@ export default function DashboardPage() {
         } else {
           setAudits([]);
         }
+        await fetchAnalyses();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not load dashboard.");
       } finally {
@@ -120,6 +174,31 @@ export default function DashboardPage() {
     }
     const payload = (await response.json()) as { audits: Audit[] };
     setAudits(payload.audits ?? []);
+  }
+
+  async function fetchAnalyses() {
+    const response = await apiFetch("/analyses");
+    if (!response.ok) {
+      throw new Error(await parseError(response));
+    }
+    const payload = (await response.json()) as { analyses: AnalysisListItem[] };
+    setAnalyses(payload.analyses ?? []);
+  }
+
+  async function selectAnalysis(analysisID: number) {
+    setError("");
+    setLoadingAnalysis(true);
+    try {
+      const response = await apiFetch(`/analyses/${analysisID}`);
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
+      setSelectedAnalysis((await response.json()) as AnalysisDetail);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load analysis details.");
+    } finally {
+      setLoadingAnalysis(false);
+    }
   }
 
   async function createProject(event: FormEvent<HTMLFormElement>) {
@@ -329,7 +408,166 @@ export default function DashboardPage() {
             </p>
           ) : null}
         </section>
+
+        <section className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+            <div>
+              <h2 className="text-base font-semibold text-gray-950">Analysis history</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                {loading ? "Loading analyses." : `${analyses.length} analysis run${analyses.length === 1 ? "" : "s"} available.`}
+              </p>
+            </div>
+          </div>
+
+          {analyses.length > 0 ? (
+            <div className="mt-5 overflow-x-auto">
+              <table className="w-full border-collapse text-left text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 text-xs uppercase text-gray-500">
+                    <th className="py-2 pr-4 font-semibold">Type</th>
+                    <th className="py-2 pr-4 font-semibold">Risk</th>
+                    <th className="py-2 pr-4 font-semibold">Status</th>
+                    <th className="py-2 pr-4 font-semibold">Created</th>
+                    <th className="py-2 font-semibold">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {analyses.map((analysis) => (
+                    <tr className="border-b border-gray-100" key={analysis.analysisId}>
+                      <td className="py-3 pr-4 font-medium text-gray-950">{analysis.inputType}</td>
+                      <td className="py-3 pr-4">
+                        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${riskBadgeClass(analysis.riskLevel)}`}>
+                          {analysis.riskLevel}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-4 text-gray-700">{analysis.status}</td>
+                      <td className="py-3 pr-4 text-gray-600">{formatDate(analysis.createdAt)}</td>
+                      <td className="py-3">
+                        <button
+                          className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={loadingAnalysis}
+                          onClick={() => selectAnalysis(analysis.analysisId)}
+                          type="button"
+                        >
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : !loading ? (
+            <p className="mt-5 rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
+              No file or URL analyses have been created yet.
+            </p>
+          ) : null}
+        </section>
+
+        {selectedAnalysis ? (
+          <section className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+              <div>
+                <h2 className="text-base font-semibold text-gray-950">Analysis details</h2>
+                <p className="mt-1 text-sm text-gray-600">{selectedAnalysis.summary}</p>
+              </div>
+              <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${riskBadgeClass(selectedAnalysis.riskScore.level)}`}>
+                {selectedAnalysis.riskScore.level} risk · {selectedAnalysis.riskScore.score}
+              </span>
+            </div>
+
+            <div className="mt-5 grid gap-5 lg:grid-cols-2">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-950">Findings</h3>
+                {selectedAnalysis.findings.length > 0 ? (
+                  <div className="mt-3 space-y-3">
+                    {selectedAnalysis.findings.map((finding) => (
+                      <article className="rounded-lg border border-gray-200 p-3" key={`${finding.id}-${finding.code}`}>
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-semibold text-gray-950">{finding.title}</p>
+                          <span className="text-xs font-medium text-gray-500">{finding.severity}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-gray-500">{finding.code}</p>
+                        <p className="mt-2 text-sm text-gray-600">{finding.description}</p>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                    No findings were recorded for this analysis.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-gray-950">Metadata</h3>
+                {selectedAnalysis.metadata.entries.length > 0 ? (
+                  <dl className="mt-3 divide-y divide-gray-100 rounded-lg border border-gray-200">
+                    {selectedAnalysis.metadata.entries.map((entry) => (
+                      <div className="grid gap-1 p-3 sm:grid-cols-[150px_1fr]" key={`${entry.key}-${entry.source}`}>
+                        <dt className="text-xs font-semibold uppercase text-gray-500">{entry.key}</dt>
+                        <dd className="break-words text-sm text-gray-800">
+                          {formatMetadataValue(entry.value)}
+                          <span className="mt-1 block text-xs text-gray-500">
+                            {entry.category} · {entry.sensitivity}
+                          </span>
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : (
+                  <p className="mt-3 rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                    No metadata entries were recorded for this analysis.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-lg border border-gray-200 p-4">
+              <h3 className="text-sm font-semibold text-gray-950">Clean file</h3>
+              {selectedAnalysis.cleanFile ? (
+                <div className="mt-2 text-sm text-gray-700">
+                  <p>
+                    {selectedAnalysis.cleanFile.filename} · {selectedAnalysis.cleanFile.cleaningStatus}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Removed metadata: {selectedAnalysis.cleanFile.removedMetadataKeys.length > 0 ? selectedAnalysis.cleanFile.removedMetadataKeys.join(", ") : "none recorded"}
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-gray-600">No clean file is available for this analysis.</p>
+              )}
+            </div>
+          </section>
+        ) : null}
       </div>
     </main>
   );
+}
+
+function riskBadgeClass(level: string) {
+  if (level === "HIGH") {
+    return "bg-red-50 text-red-700";
+  }
+  if (level === "MEDIUM") {
+    return "bg-amber-50 text-amber-700";
+  }
+  return "bg-green-50 text-green-700";
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function formatMetadataValue(value: unknown) {
+  if (value === null || value === undefined) {
+    return "Not recorded";
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return JSON.stringify(value);
 }
