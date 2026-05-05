@@ -1,24 +1,54 @@
 # DataGuardian
 
-DataGuardian is a local-first security auditing and authentication demo built as
-a production-style portfolio project. It combines a Go API, a Next.js frontend,
-PostgreSQL, Docker Compose orchestration, security checks, CI, and optional
-browser E2E testing into a small but realistic product slice.
+![CI](https://github.com/joaosalero/dataguardian/actions/workflows/ci.yml/badge.svg)
+![CodeQL Security](https://img.shields.io/badge/CodeQL-ready-blueviolet)
+![Dependabot](https://img.shields.io/badge/dependabot-enabled-brightgreen)
+![Go](https://img.shields.io/badge/go-1.25-blue)
+![License](https://img.shields.io/badge/license-not%20specified-lightgrey)
 
-The project exists to show more than a working screen. It demonstrates how a
-system is made runnable, testable, secure by default, and understandable to the
-next engineer who has to operate it.
+DataGuardian is a local-first security auditing and authentication platform
+slice. It is built to answer a practical question: how do you give teams a
+trustworthy foundation for reviewing sensitive data systems without turning the
+demo into a fragile toy?
 
-## What It Solves
+The current release focuses on the production foundations that matter first:
+secure authentication, deterministic local execution, automated validation,
+dependency hygiene, and a clear path from developer laptop to CI.
 
-- Provides a secure authentication foundation for a future database security
-  review tool.
-- Runs locally through deterministic scripts and Docker Compose.
-- Keeps the active backend simple and explicit: Go is the only runtime backend.
-- Separates core functionality from optional testing tools so the app works
-  without Python.
-- Shows security and dependency hygiene as part of normal development, not as an
-  afterthought.
+## Product Perspective
+
+DataGuardian is aimed at engineers, security-minded teams, and technical
+reviewers who need confidence that a system handling audit data can be started,
+tested, inspected, and extended without hidden setup steps.
+
+In a real security product, the first risk is rarely the dashboard. It is weak
+authentication, unclear runtime boundaries, unmanaged dependencies, leaked
+configuration, and tests that only work on one machine. This project prioritizes
+those fundamentals before expanding into larger audit workflows such as RBAC,
+tenant isolation, immutable audit events, or deployment automation.
+
+## Engineering Narrative
+
+DataGuardian began as a broader Python-backed prototype and was consolidated
+around a Go backend for the active runtime. That migration is intentional: the
+project now has one backend source of truth, one Docker runtime path, and one CI
+contract.
+
+Go is used for the backend because it fits the shape of the problem:
+
+- Strong static typing for authentication and configuration boundaries.
+- Small operational footprint for API services.
+- Clear standard-library HTTP behavior.
+- Good concurrency and timeout primitives for future audit workloads.
+- Straightforward container execution with predictable builds.
+
+Docker Compose is the default runtime because reproducibility is part of the
+product. A reviewer should be able to start PostgreSQL, the API, and the
+frontend with one command and see the same service topology used by the scripts.
+
+Python remains intentionally optional. It is used only for pytest and Playwright
+browser E2E tests. The application, backend, frontend, Docker stack, and core
+test bundle do not require Python to run.
 
 ## Architecture
 
@@ -29,93 +59,57 @@ Browser
 Next.js frontend  --->  Go HTTP API  --->  PostgreSQL 15
                               |
                               v
-                       Security middleware
-                       Auth, cookies, rate limits
+                    Security middleware and auth
 ```
 
-### Go Backend
-
-The active backend lives in `backend-go/`. Go was chosen for the consolidated
-runtime because it gives the project a small deployment footprint, clear
-standard-library HTTP behavior, strong static typing, and straightforward
-concurrency and timeout controls.
-
-The API currently handles:
-
-- User registration and login.
-- Argon2id password hashing.
-- RS256 JWT session cookies.
-- Authenticated profile lookup.
-- Local dev/test bootstrap users.
-- PostgreSQL persistence through `pgx`.
-- Security headers, HTTPS enforcement in production, CORS, tenant context, and
-  auth rate limiting.
-
-The previous Python backend is intentionally not part of the active runtime.
-`backend-legacy-python/` is ignored and treated as historical reference only.
-
-### Next.js Frontend
-
-The frontend lives in `frontend/` and uses Next.js, React, TypeScript, and
-Tailwind CSS. It provides login, registration, session verification, logout, and
-a minimal dashboard that confirms the Go backend is active.
-
-Frontend dependencies are pinned exactly and installed from
-`frontend/package-lock.json` with `npm ci` in CI and local validation.
-
-### Docker Orchestration
-
-`docker-compose.yml` starts exactly these services:
+Active runtime services:
 
 - `db`: PostgreSQL 15
 - `backend-go`: Go API
-- `frontend`: Next.js dev server
+- `frontend`: Next.js application
 
-Docker volumes isolate container `node_modules`, Next.js cache, PostgreSQL data,
-and Go module cache from the host checkout.
+The Go API handles registration, login, session validation, logout, local
+dev/test bootstrap users, and PostgreSQL persistence. The frontend provides the
+login, registration, authenticated dashboard, and session-aware navigation.
 
-### Optional Python E2E
+The legacy Python implementation is not part of Docker, CI, startup scripts, or
+the active runtime.
 
-Python is not a backend runtime. It is used only for optional pytest and
-Playwright E2E tests under `tests/e2e/`. All core commands are designed to keep
-working when pytest is not installed; E2E checks are skipped with a warning.
+## Security Mindset
 
-## Technical Highlights
+Security is treated as a workflow property, not a README claim.
 
-- Security-first authentication: Argon2id passwords and RS256 JWT validation.
-- HttpOnly session cookies with production `Secure` mode.
-- Production config checks for database URL, JWT keys, and encryption key.
-- HTTPS enforcement in production through TLS or `X-Forwarded-Proto`.
-- Auth rate limiting for login and registration.
-- Security headers on both API and frontend responses.
-- Dependency scanning with `npm audit --audit-level=high`.
-- Repository secret detection through `security/run_security_checks.sh`.
-- Runtime exposure audit through `security/audit.sh`.
-- CI separation between backend tests, security checks, and frontend build.
-- CodeQL-ready structure: source is separated by runtime, generated artifacts
-  are ignored, and CI has clear places to add GitHub code scanning.
-- Conservative Dependabot policy for frontend packages: patch updates are
-  allowed automatically; minor and major upgrades require manual review.
+- Passwords are hashed with Argon2id.
+- Sessions use HttpOnly RS256 JWT cookies.
+- JWT validation requires expected claims and rejects unexpected signing
+  methods.
+- Production configuration requires explicit database URL, JWT keys, and
+  encryption key.
+- Production requests require HTTPS or trusted proxy forwarding.
+- Login and registration are rate limited.
+- Backend and frontend responses set basic hardening headers.
+- `npm audit --audit-level=high` checks frontend dependency risk.
+- `security/run_security_checks.sh` scans for obvious secret exposure and
+  verifies `.env` is ignored.
+- `security/audit.sh` checks runtime responses for sensitive leakage and risky
+  headers.
+- CI separates backend tests, security checks, and frontend build so failures
+  are easier to reason about.
 
-## Requirements
+The repository is also structured for CodeQL adoption: active source is
+separated by runtime, generated artifacts are ignored, and CI has clear security
+gates where code scanning can be added.
 
-For normal local usage:
+## Execution Modes
 
-- Docker and Docker Compose
-
-For host-side development and validation:
-
-- Go 1.25 or newer, or Docker Compose for Go tests through the container
-- Node.js 20 and npm
-- Python 3.12 only if you want optional pytest/Playwright E2E tests
-
-## Quick Start
-
-Start the application:
+### Manual Usage
 
 ```bash
 ./start.sh manual
 ```
+
+Manual mode starts PostgreSQL, the Go backend, and the frontend through Docker
+Compose. It waits for readiness and then follows backend and frontend logs.
 
 Open:
 
@@ -132,24 +126,7 @@ admin / admin123
 test  / test123
 ```
 
-These users are bootstrapped only in `dev` and `test` environments.
-
-## Execution Modes
-
-### Manual Usage
-
-```bash
-./start.sh manual
-```
-
-Manual mode starts PostgreSQL, the Go backend, and the frontend, waits for
-readiness, then follows backend and frontend logs.
-
-Equivalent service-only startup:
-
-```bash
-./scripts/up.sh
-```
+These users are created only in `dev` and `test` environments.
 
 ### Automated Mode
 
@@ -158,35 +135,45 @@ Equivalent service-only startup:
 ```
 
 Automated mode runs security checks, starts the Docker stack, runs the runtime
-security audit, executes Go backend tests, and runs E2E tests only when pytest is
-available.
+security audit, executes Go backend tests, and runs browser E2E tests only when
+pytest is available.
 
-Visual E2E mode:
+Visual browser mode:
 
 ```bash
 ./start.sh auto --visual
 ```
 
-### Local Test Bundle
+### Core Test Bundle
 
 ```bash
 ./run-tests.sh
 ```
 
-This runs Go tests and the frontend production build. If pytest is installed, it
-also runs the architecture contract test and browser E2E tests. If pytest is not
-installed, E2E is skipped and the command can still pass.
+This runs Go tests and the frontend production build. If pytest is installed,
+it also runs the architecture contract and browser E2E tests. If pytest is not
+installed, E2E is skipped gracefully:
 
-## Setup Commands
+```text
+[WARN] pytest not found. Skipping E2E tests.
+```
 
-Install frontend dependencies only:
+## Setup And Commands
+
+Install frontend dependencies:
 
 ```bash
 cd frontend
 npm ci
 ```
 
-Optional E2E tooling setup:
+Start services without following logs:
+
+```bash
+./scripts/up.sh
+```
+
+Install optional E2E tooling:
 
 ```bash
 ./scripts/install.sh
@@ -194,135 +181,143 @@ Optional E2E tooling setup:
 
 `scripts/install.sh` creates `.venv/`, installs `pytest` and
 `pytest-playwright`, and runs `npm ci` for the frontend. This is useful for
-browser E2E development, but it is not required to run the application.
+browser E2E development, but it is not required for normal application usage.
 
-## Test Commands
-
-Backend tests:
+Run backend tests:
 
 ```bash
 cd backend-go
 go test ./...
 ```
 
-Frontend type check:
+Run frontend type check:
 
 ```bash
 cd frontend
 npm run test
 ```
 
-Frontend build:
+Build frontend:
 
 ```bash
 cd frontend
 npm run build
 ```
 
-Full local bundle:
-
-```bash
-./run-tests.sh
-```
-
-Optional E2E tests, after the stack is running and pytest tooling is installed:
+Run optional E2E tests after the stack is running:
 
 ```bash
 pytest tests/e2e
 ```
 
-Build local backend distributables:
+Build local backend binaries:
 
 ```bash
 ./scripts/build_go.sh
 ```
 
-This writes generated binaries under `dist/`, which is intentionally ignored.
+Generated binaries are written under `dist/`, which is intentionally ignored.
 
 ## Security Commands
 
-Static dependency and secret checks:
+Run dependency, secret, and config checks:
 
 ```bash
 ./security/run_security_checks.sh
 ```
 
-Secret-only checks:
+Run secret-only checks:
 
 ```bash
 ./security/run_security_checks.sh --secrets-only
 ```
 
-Runtime exposure audit, after the stack is running:
+Run runtime exposure audit after services are up:
 
 ```bash
 ./security/audit.sh
 ```
 
-Diagnostics for ports and Docker state:
+Inspect ports and Docker state:
 
 ```bash
 ./scripts/doctor.sh
 ```
 
-## CI/CD
+## CI/CD And Dependency Policy
 
 GitHub Actions runs on push and pull request:
 
-- `backend-tests`: starts PostgreSQL, sets up Go, runs `go test ./...`, and runs
-  the architecture contract test.
-- `security-checks`: installs frontend dependencies, runs
-  `npm audit --audit-level=high`, and runs repository secret checks.
-- `frontend-build`: installs frontend dependencies and runs `npm run build`.
+- `backend-tests`: PostgreSQL service, Go setup, `go test ./...`, and the
+  architecture contract.
+- `security-checks`: `npm ci`, `npm audit --audit-level=high`, and repository
+  secret checks.
+- `frontend-build`: `npm ci` and `npm run build`.
 
-Backend tests and security checks are mandatory. The frontend build still runs
-on every push and pull request, but frontend build failures from Dependabot pull
-requests are non-blocking so automated frontend dependency PRs cannot make the
-main pipeline noisy. Human pull requests and pushes still require a passing
-frontend build.
+Backend tests and security checks are mandatory. Frontend builds still run on
+Dependabot pull requests, but Dependabot frontend build failures are
+non-blocking to avoid noisy incompatible dependency PRs. Human pull requests
+and pushes still require the frontend build to pass.
 
-CI does not run the legacy Python backend.
+Frontend dependency management is deliberately conservative:
 
-## Dependency Management
-
-Frontend dependency updates are intentionally conservative:
-
-- Direct frontend dependencies are exact-version pinned in
-  `frontend/package.json`.
-- CI uses `npm ci` and `frontend/package-lock.json` for deterministic installs.
-- Dependabot npm updates are limited to patch-level changes.
-- Semver minor and major frontend updates require manual review.
-
-Major framework or tooling upgrades, including Next.js, React, TypeScript,
-Tailwind CSS, and React type packages, should be handled in dedicated PRs with
-local build, type-check, and browser validation.
-
-Security findings remain mandatory. Fix them through safe patch updates when
-available, or through a manually reviewed upgrade when no patch path exists.
+- Direct frontend dependencies are pinned to exact versions.
+- CI installs from `frontend/package-lock.json` with `npm ci`.
+- Dependabot npm version updates are limited to patch-level changes.
+- Minor and major framework/tooling upgrades require manual review.
 
 ## For Recruiters
 
-DataGuardian is intentionally small in product scope and serious in engineering
-scope. It is designed to show production-level thinking without pretending to be
-a finished enterprise platform.
+DataGuardian is intentionally scoped, but the engineering choices are
+production-oriented.
 
-What to look for:
+What this project demonstrates:
 
-- Architecture decisions: the backend was consolidated to Go for a clearer
-  runtime model, simpler deployment path, and stronger typed core.
-- Migration discipline: the legacy Python backend is isolated from Docker,
-  scripts, and CI so there is one active source of truth.
-- Security posture: password hashing, JWT validation, HttpOnly cookies,
-  production config guards, rate limiting, security headers, dependency audit,
-  secret scanning, and runtime exposure checks are part of the default workflow.
-- Testing strategy: Go unit tests cover core auth behavior, CI verifies the
-  architecture contract, frontend builds are deterministic, and browser E2E is
-  available without making Python mandatory for normal operation.
-- Operational clarity: scripts are explicit, Docker is the default runtime path,
-  generated artifacts are ignored, and README commands match actual behavior.
+- Migration judgment: the active backend moved from a Python prototype shape to
+  a Go service with one runtime path and clearer operational boundaries.
+- Runtime discipline: Docker Compose starts only PostgreSQL, the Go API, and
+  the Next.js frontend.
+- Security-first design: authentication, cookie handling, config validation,
+  dependency scanning, secret detection, and runtime exposure checks are built
+  into normal workflows.
+- Testing philosophy: fast Go tests cover core auth behavior; frontend builds
+  validate the UI contract; optional Playwright E2E covers browser behavior
+  without making Python mandatory.
+- Trade-off awareness: the project favors a stable foundation over prematurely
+  implementing enterprise features such as RBAC, billing, or cloud deployment.
+- Operational clarity: scripts, README commands, Docker services, and CI jobs
+  describe the same system.
 
-The result is a project that can be cloned, started, inspected, and extended by
-another engineer without relying on hidden setup steps.
+The result is a repository that can be reviewed as both a working product slice
+and an engineering sample: small enough to understand, complete enough to run,
+and structured enough to extend.
+
+## Release v1.0.0
+
+Tag:
+
+```text
+v1.0.0
+```
+
+Title:
+
+```text
+v1.0.0 - Production-ready DataGuardian
+```
+
+Release focus:
+
+- Go backend migration completed for the active runtime.
+- Security posture improved with Argon2id passwords, RS256 session tokens,
+  hardened cookies, rate limiting, dependency scanning, and secret checks.
+- Docker-based execution standardized for local usage and automated flows.
+- Optional pytest and Playwright E2E testing isolated from core application
+  requirements.
+- Repository hygiene cleaned with generated artifacts, secrets, and local caches
+  ignored.
+- Recruiter-focused architecture documentation added to explain decisions,
+  trade-offs, and production-readiness thinking.
 
 ## Project Structure
 
@@ -363,10 +358,4 @@ Frontend cannot reach backend:
 - Confirm `NEXT_PUBLIC_API_URL` is `http://localhost:8000` for local Docker use.
 - Restart with `./scripts/up.sh`.
 
-Missing pytest:
-
-```text
-[WARN] pytest not found. Skipping E2E tests.
-```
-
-This is expected unless you are actively running browser E2E tests.
+Missing pytest is expected unless you are actively running browser E2E tests.
