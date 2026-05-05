@@ -19,6 +19,7 @@ const (
 	defaultAccessTokenExpireMinutes = 30
 	defaultAuthCookieName           = "dataguardian_session"
 	defaultCookieSameSite           = "lax"
+	defaultStorageDir               = "/tmp/dataguardian/uploads"
 )
 
 type Settings struct {
@@ -28,6 +29,7 @@ type Settings struct {
 	AccessTokenExpireMinutes int
 	AuthCookieName           string
 	CookieSameSite           string
+	StorageDir               string
 	JWTPrivateKeyPEM         string
 	JWTPublicKeyPEM          string
 	FernetKey                string
@@ -43,6 +45,7 @@ func Load() (Settings, error) {
 		AccessTokenExpireMinutes: envInt("ACCESS_TOKEN_EXPIRE_MINUTES", defaultAccessTokenExpireMinutes),
 		AuthCookieName:           env("AUTH_COOKIE_NAME", defaultAuthCookieName),
 		CookieSameSite:           strings.ToLower(env("COOKIE_SAMESITE", defaultCookieSameSite)),
+		StorageDir:               env("STORAGE_DIR", defaultStorageDir),
 		JWTPrivateKeyPEM:         normalizePEM(os.Getenv("JWT_PRIVATE_KEY")),
 		JWTPublicKeyPEM:          normalizePEM(os.Getenv("JWT_PUBLIC_KEY")),
 		FernetKey:                strings.TrimSpace(os.Getenv("FERNET_KEY")),

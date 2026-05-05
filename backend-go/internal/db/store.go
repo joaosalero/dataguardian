@@ -99,6 +99,67 @@ CREATE TABLE IF NOT EXISTS users (
 			findings TEXT[] NOT NULL DEFAULT '{}',
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 		)`,
+		`CREATE TABLE IF NOT EXISTS analyses (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			input_type VARCHAR NOT NULL,
+			status VARCHAR NOT NULL,
+			summary TEXT NOT NULL DEFAULT '',
+			started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+			completed_at TIMESTAMPTZ NULL,
+			failure_reason TEXT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS analysis_files (
+			id SERIAL PRIMARY KEY,
+			analysis_id INTEGER NOT NULL UNIQUE REFERENCES analyses(id) ON DELETE CASCADE,
+			original_filename VARCHAR NOT NULL,
+			stored_reference TEXT NOT NULL,
+			mime_type VARCHAR NOT NULL,
+			size_bytes BIGINT NOT NULL,
+			checksum_sha256 VARCHAR NOT NULL,
+			extension VARCHAR NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		)`,
+		`CREATE TABLE IF NOT EXISTS analysis_metadata (
+			id SERIAL PRIMARY KEY,
+			analysis_id INTEGER NOT NULL UNIQUE REFERENCES analyses(id) ON DELETE CASCADE,
+			source_type VARCHAR NOT NULL,
+			entries JSONB NOT NULL DEFAULT '[]',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		)`,
+		`CREATE TABLE IF NOT EXISTS analysis_findings (
+			id SERIAL PRIMARY KEY,
+			analysis_id INTEGER NOT NULL REFERENCES analyses(id) ON DELETE CASCADE,
+			type VARCHAR NOT NULL,
+			code VARCHAR NOT NULL,
+			title TEXT NOT NULL,
+			description TEXT NOT NULL,
+			severity VARCHAR NOT NULL,
+			evidence JSONB NOT NULL,
+			recommendation TEXT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		)`,
+		`CREATE TABLE IF NOT EXISTS analysis_risk_scores (
+			id SERIAL PRIMARY KEY,
+			analysis_id INTEGER NOT NULL UNIQUE REFERENCES analyses(id) ON DELETE CASCADE,
+			score INTEGER NOT NULL,
+			level VARCHAR NOT NULL,
+			drivers JSONB NOT NULL DEFAULT '[]',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		)`,
+		`CREATE TABLE IF NOT EXISTS clean_files (
+			id SERIAL PRIMARY KEY,
+			analysis_id INTEGER NOT NULL UNIQUE REFERENCES analyses(id) ON DELETE CASCADE,
+			original_file_id INTEGER NOT NULL REFERENCES analysis_files(id) ON DELETE CASCADE,
+			stored_reference TEXT NOT NULL,
+			filename VARCHAR NOT NULL,
+			mime_type VARCHAR NOT NULL,
+			size_bytes BIGINT NOT NULL,
+			checksum_sha256 VARCHAR NOT NULL,
+			cleaning_status VARCHAR NOT NULL,
+			removed_metadata_keys JSONB NOT NULL DEFAULT '[]',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		)`,
 	} {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
 			return err

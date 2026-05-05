@@ -16,7 +16,7 @@ import (
 
 type server struct {
 	cfg         config.Settings
-	store       *db.Store
+	store       dataStore
 	authLimiter *rateLimiter
 }
 

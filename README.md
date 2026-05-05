@@ -254,6 +254,48 @@ Authenticated product routes:
 - `GET /projects/{id}`: fetch one project owned by the signed-in user.
 - `POST /projects/{id}/audit`: run and store a baseline audit result.
 - `GET /projects/{id}/audits`: list audit results for a project.
+- `POST /analyses`: create a file analysis from a multipart upload.
+- `GET /analyses/{id}`: fetch a completed file analysis result.
+
+### File Analysis
+
+The first analysis slice supports authenticated file uploads only. URL analysis
+is not implemented yet.
+
+Example:
+
+```bash
+curl -i \
+  -X POST http://localhost:8000/analyses \
+  -b "dataguardian_session=<session-cookie>" \
+  -F "projectId=1" \
+  -F "inputType=FILE" \
+  -F "file=@sample.pdf"
+```
+
+Supported upload types:
+
+- PDF: `application/pdf`
+- JPEG: `image/jpeg`
+
+Current limits and behavior:
+
+- Maximum file size is 10 MB.
+- Files are stored under the configured `STORAGE_DIR`, defaulting to
+  `/tmp/dataguardian/uploads`.
+- The backend computes a SHA-256 checksum for every accepted file.
+- Minimal analysis scans raw bytes for PDF JavaScript/OpenAction markers,
+  base64-like long strings, and `eval(` string patterns.
+- Metadata is limited to filename, MIME type, size, and checksum.
+- Clean file generation is not implemented yet, so `cleanFile` is `null`.
+
+Security boundary:
+
+- Uploaded files are treated as untrusted binary data.
+- Files are not executed, rendered, opened in viewers, or processed by PDF
+  engines.
+- The current implementation is structured for future sandboxing, but does not
+  provide a sandbox yet.
 
 ## CI/CD And Dependency Policy
 
