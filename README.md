@@ -1,10 +1,9 @@
 # DataGuardian
 
 ![CI](https://github.com/joaosalero/dataguardian/actions/workflows/ci.yml/badge.svg)
-![CodeQL Security](https://img.shields.io/badge/CodeQL-ready-blueviolet)
 ![Dependabot](https://img.shields.io/badge/dependabot-enabled-brightgreen)
 ![Go](https://img.shields.io/badge/go-1.25-blue)
-![License](https://img.shields.io/badge/license-not%20specified-lightgrey)
+![License](https://img.shields.io/badge/license-MIT-green)
 
 DataGuardian is a local-first security auditing and authentication platform
 slice. It is built to answer a practical question: how do you give teams a
