@@ -47,6 +47,8 @@ func NewRouter(cfg config.Settings, store *db.Store) http.Handler {
 	mux.HandleFunc("GET /projects/{id}", srv.requireAuth(srv.getProject))
 	mux.HandleFunc("POST /projects/{id}/audit", srv.requireAuth(srv.runAudit))
 	mux.HandleFunc("GET /projects/{id}/audits", srv.requireAuth(srv.listAudits))
+	mux.HandleFunc("POST /analyses", srv.requireAuth(srv.createAnalysis))
+	mux.HandleFunc("GET /analyses/{id}", srv.requireAuth(srv.getAnalysis))
 	return securityHeaders(httpsRequired(cfg, withTenantContext(cors(mux))))
 }
 
