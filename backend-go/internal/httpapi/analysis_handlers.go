@@ -18,6 +18,8 @@ import (
 
 const maxAnalysisFileSize = 10 * 1024 * 1024
 
+var analyzeURL = analysis.AnalyzeURL
+
 func (s *server) createAnalysis(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data") {
 		s.createFileAnalysis(w, r)
@@ -32,7 +34,81 @@ func (s *server) createAnalysis(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"detail": detail})
 		return
 	}
+	if payload.InputType == db.InputTypeURL {
+		s.createURLAnalysis(w, r, payload)
+		return
+	}
 	writeJSON(w, http.StatusNotImplemented, map[string]string{"detail": "Only FILE multipart analysis is implemented"})
+}
+
+func (s *server) createURLAnalysis(w http.ResponseWriter, r *http.Request, payload CreateAnalysisRequest) {
+	userID, ok := userIDFromContext(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"detail": "Invalid authentication credentials"})
+		return
+	}
+	if _, err := s.store.ProjectByID(r.Context(), userID, payload.ProjectID); errors.Is(err, db.ErrNotFound) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"detail": "Project not found"})
+		return
+	} else if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return
+	}
+
+	result, err := analyzeURL(r.Context(), payload.URL.OriginalURL)
+	if errors.Is(err, analysis.ErrInvalidURL) || errors.Is(err, analysis.ErrUnsafeURL) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"detail": "Invalid or unsafe URL"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"detail": "Invalid or unsafe URL"})
+		return
+	}
+
+	root, err := s.store.CreateAnalysis(r.Context(), db.Analysis{
+		ProjectID: payload.ProjectID,
+		InputType: db.InputTypeURL,
+		Status:    db.AnalysisStatusProcessing,
+		Summary:   "URL analysis is processing.",
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return
+	}
+	result.Target.AnalysisID = root.ID
+	createdTarget, err := s.store.CreateURLTarget(r.Context(), result.Target)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return
+	}
+	result.Metadata.AnalysisID = root.ID
+	metadata, err := s.store.SaveMetadata(r.Context(), result.Metadata)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return
+	}
+	if err := s.store.SaveFindings(r.Context(), root.ID, result.Findings); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return
+	}
+	result.RiskScore.AnalysisID = root.ID
+	riskScore, err := s.store.SaveRiskScore(r.Context(), result.RiskScore)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return
+	}
+	completed, err := s.store.CompleteAnalysis(r.Context(), root.ID, result.Summary)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return
+	}
+	findings, err := s.store.FindingsByAnalysisID(r.Context(), root.ID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, buildURLAnalysisResponse(completed, createdTarget, metadata, findings, riskScore))
 }
 
 func (s *server) createFileAnalysis(w http.ResponseWriter, r *http.Request) {
@@ -168,16 +244,22 @@ func (s *server) getAnalysis(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
 		return
 	}
-	if root.InputType != db.InputTypeFile {
-		writeJSON(w, http.StatusNotImplemented, map[string]string{"detail": "Only FILE analysis retrieval is implemented"})
-		return
+	switch root.InputType {
+	case db.InputTypeFile:
+		file, metadata, findings, riskScore, ok := s.loadFileAnalysisParts(w, r, root.ID)
+		if !ok {
+			return
+		}
+		writeJSON(w, http.StatusOK, buildFileAnalysisResponse(root, file, metadata, findings, riskScore))
+	case db.InputTypeURL:
+		target, metadata, findings, riskScore, ok := s.loadURLAnalysisParts(w, r, root.ID)
+		if !ok {
+			return
+		}
+		writeJSON(w, http.StatusOK, buildURLAnalysisResponse(root, target, metadata, findings, riskScore))
+	default:
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
 	}
-
-	file, metadata, findings, riskScore, ok := s.loadFileAnalysisParts(w, r, root.ID)
-	if !ok {
-		return
-	}
-	writeJSON(w, http.StatusOK, buildFileAnalysisResponse(root, file, metadata, findings, riskScore))
 }
 
 func (s *server) loadFileAnalysisParts(w http.ResponseWriter, r *http.Request, analysisID int64) (db.File, db.Metadata, []db.Finding, db.RiskScore, bool) {
@@ -204,6 +286,30 @@ func (s *server) loadFileAnalysisParts(w http.ResponseWriter, r *http.Request, a
 	return file, metadata, findings, riskScore, true
 }
 
+func (s *server) loadURLAnalysisParts(w http.ResponseWriter, r *http.Request, analysisID int64) (db.URLTarget, db.Metadata, []db.Finding, db.RiskScore, bool) {
+	target, err := s.store.URLTargetByAnalysisID(r.Context(), analysisID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return db.URLTarget{}, db.Metadata{}, nil, db.RiskScore{}, false
+	}
+	metadata, err := s.store.MetadataByAnalysisID(r.Context(), analysisID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return db.URLTarget{}, db.Metadata{}, nil, db.RiskScore{}, false
+	}
+	findings, err := s.store.FindingsByAnalysisID(r.Context(), analysisID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return db.URLTarget{}, db.Metadata{}, nil, db.RiskScore{}, false
+	}
+	riskScore, err := s.store.RiskScoreByAnalysisID(r.Context(), analysisID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return db.URLTarget{}, db.Metadata{}, nil, db.RiskScore{}, false
+	}
+	return target, metadata, findings, riskScore, true
+}
+
 // validateCreateAnalysisRequest supports the JSON contract while multipart handles real file upload.
 func validateCreateAnalysisRequest(payload CreateAnalysisRequest) string {
 	if payload.ProjectID <= 0 {
@@ -223,6 +329,9 @@ func validateCreateAnalysisRequest(payload CreateAnalysisRequest) string {
 	}
 	if payload.InputType == db.InputTypeURL && !hasURL {
 		return "URL input is required for URL analyses"
+	}
+	if payload.InputType == db.InputTypeURL && strings.TrimSpace(payload.URL.OriginalURL) == "" {
+		return "URL is required for URL analyses"
 	}
 	return ""
 }

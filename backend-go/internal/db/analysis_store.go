@@ -185,9 +185,98 @@ func (s *Store) FileByAnalysisID(ctx context.Context, analysisID int64) (File, e
 	return file, err
 }
 
-// CreateURLTarget is reserved for the later URL analysis slice.
+// CreateURLTarget stores the passive fetch result for a URL analysis.
 func (s *Store) CreateURLTarget(ctx context.Context, target URLTarget) (URLTarget, error) {
-	return URLTarget{}, ErrNotImplemented
+	redirectChain, err := json.Marshal(target.RedirectChain)
+	if err != nil {
+		return URLTarget{}, err
+	}
+
+	var created URLTarget
+	var rawRedirectChain []byte
+	err = s.db.QueryRowContext(
+		ctx,
+		`INSERT INTO analysis_url_targets
+		 (analysis_id, original_url, final_url, redirect_count, redirect_chain, uses_https, host,
+		  content_type, content_length_bytes, http_status_code, fetched_at, fetch_status, failure_reason)
+		 VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13)
+		 RETURNING id, analysis_id, original_url, final_url, redirect_count, redirect_chain, uses_https, host,
+		  content_type, content_length_bytes, http_status_code, fetched_at, fetch_status, failure_reason`,
+		target.AnalysisID,
+		target.OriginalURL,
+		target.FinalURL,
+		target.RedirectCount,
+		string(redirectChain),
+		target.UsesHTTPS,
+		target.Host,
+		target.ContentType,
+		target.ContentLengthBytes,
+		target.HTTPStatusCode,
+		target.FetchedAt,
+		target.FetchStatus,
+		target.FailureReason,
+	).Scan(
+		&created.ID,
+		&created.AnalysisID,
+		&created.OriginalURL,
+		&created.FinalURL,
+		&created.RedirectCount,
+		&rawRedirectChain,
+		&created.UsesHTTPS,
+		&created.Host,
+		&created.ContentType,
+		&created.ContentLengthBytes,
+		&created.HTTPStatusCode,
+		&created.FetchedAt,
+		&created.FetchStatus,
+		&created.FailureReason,
+	)
+	if err != nil {
+		return URLTarget{}, err
+	}
+	if err := json.Unmarshal(rawRedirectChain, &created.RedirectChain); err != nil {
+		return URLTarget{}, err
+	}
+	return created, nil
+}
+
+// URLTargetByAnalysisID loads the passive fetch result attached to one URL analysis.
+func (s *Store) URLTargetByAnalysisID(ctx context.Context, analysisID int64) (URLTarget, error) {
+	var target URLTarget
+	var rawRedirectChain []byte
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT id, analysis_id, original_url, final_url, redirect_count, redirect_chain, uses_https, host,
+		  content_type, content_length_bytes, http_status_code, fetched_at, fetch_status, failure_reason
+		 FROM analysis_url_targets
+		 WHERE analysis_id = $1`,
+		analysisID,
+	).Scan(
+		&target.ID,
+		&target.AnalysisID,
+		&target.OriginalURL,
+		&target.FinalURL,
+		&target.RedirectCount,
+		&rawRedirectChain,
+		&target.UsesHTTPS,
+		&target.Host,
+		&target.ContentType,
+		&target.ContentLengthBytes,
+		&target.HTTPStatusCode,
+		&target.FetchedAt,
+		&target.FetchStatus,
+		&target.FailureReason,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return URLTarget{}, ErrNotFound
+	}
+	if err != nil {
+		return URLTarget{}, err
+	}
+	if err := json.Unmarshal(rawRedirectChain, &target.RedirectChain); err != nil {
+		return URLTarget{}, err
+	}
+	return target, nil
 }
 
 // SaveMetadata stores extracted metadata entries for one analysis.

@@ -25,6 +25,7 @@ type dataStore interface {
 	CreateFile(ctx context.Context, file db.File) (db.File, error)
 	FileByAnalysisID(ctx context.Context, analysisID int64) (db.File, error)
 	CreateURLTarget(ctx context.Context, target db.URLTarget) (db.URLTarget, error)
+	URLTargetByAnalysisID(ctx context.Context, analysisID int64) (db.URLTarget, error)
 	SaveMetadata(ctx context.Context, metadata db.Metadata) (db.Metadata, error)
 	MetadataByAnalysisID(ctx context.Context, analysisID int64) (db.Metadata, error)
 	SaveFindings(ctx context.Context, analysisID int64, findings []db.Finding) error

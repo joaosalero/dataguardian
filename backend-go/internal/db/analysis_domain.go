@@ -152,6 +152,7 @@ type URLTarget struct {
 	Host               string      `json:"host"`
 	ContentType        *string     `json:"content_type"`
 	ContentLengthBytes *int64      `json:"content_length_bytes"`
+	HTTPStatusCode     *int        `json:"http_status_code"`
 	FetchedAt          *time.Time  `json:"fetched_at"`
 	FetchStatus        FetchStatus `json:"fetch_status"`
 	FailureReason      *string     `json:"failure_reason"`

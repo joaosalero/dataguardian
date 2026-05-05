@@ -57,6 +57,43 @@ func buildFileAnalysisResponse(
 	}
 }
 
+func buildURLAnalysisResponse(
+	analysis db.Analysis,
+	target db.URLTarget,
+	metadata db.Metadata,
+	findings []db.Finding,
+	riskScore db.RiskScore,
+) AnalysisResponse {
+	return AnalysisResponse{
+		AnalysisID:    analysis.ID,
+		ProjectID:     analysis.ProjectID,
+		InputType:     analysis.InputType,
+		Status:        analysis.Status,
+		Summary:       analysis.Summary,
+		StartedAt:     analysis.StartedAt,
+		CompletedAt:   analysis.CompletedAt,
+		FailureReason: analysis.FailureReason,
+		URLTarget: &AnalysisURLTarget{
+			ID:                 target.ID,
+			OriginalURL:        target.OriginalURL,
+			FinalURL:           target.FinalURL,
+			RedirectCount:      target.RedirectCount,
+			RedirectChain:      target.RedirectChain,
+			UsesHTTPS:          target.UsesHTTPS,
+			Host:               target.Host,
+			ContentType:        target.ContentType,
+			ContentLengthBytes: target.ContentLengthBytes,
+			HTTPStatusCode:     target.HTTPStatusCode,
+			FetchStatus:        target.FetchStatus,
+			FailureReason:      target.FailureReason,
+		},
+		Findings:  analysisFindings(findings),
+		Metadata:  analysisMetadata(metadata),
+		RiskScore: analysisRiskScore(riskScore),
+		CleanFile: nil,
+	}
+}
+
 func analysisFindings(findings []db.Finding) []AnalysisFinding {
 	response := make([]AnalysisFinding, 0, len(findings))
 	for _, finding := range findings {

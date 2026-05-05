@@ -119,18 +119,18 @@ func pdfFindings(content []byte) []db.Finding {
 
 func genericFindings(content []byte) []db.Finding {
 	findings := make([]db.Finding, 0)
-	if match := base64Pattern.Find(content); len(match) > 0 {
+	if match := findBase64Pattern(content); match != "" {
 		findings = append(findings, newFinding(
 			db.FindingTypeGeneric,
 			"GENERIC_BASE64_PATTERN",
 			"Long base64-like string detected",
 			"The file contains a long base64-like string in its raw bytes.",
 			db.SeverityMedium,
-			snippet(match),
+			match,
 			"GENERIC_BASE64_PATTERN",
 		))
 	}
-	if bytes.Contains(bytes.ToLower(content), []byte("eval(")) {
+	if hasEvalPattern(content) {
 		findings = append(findings, newFinding(
 			db.FindingTypeGeneric,
 			"GENERIC_EVAL_PATTERN",
@@ -142,6 +142,17 @@ func genericFindings(content []byte) []db.Finding {
 		))
 	}
 	return findings
+}
+
+func findBase64Pattern(content []byte) string {
+	if match := base64Pattern.Find(content); len(match) > 0 {
+		return snippet(match)
+	}
+	return ""
+}
+
+func hasEvalPattern(content []byte) bool {
+	return bytes.Contains(bytes.ToLower(content), []byte("eval("))
 }
 
 func newFinding(

@@ -120,6 +120,23 @@ CREATE TABLE IF NOT EXISTS users (
 			extension VARCHAR NULL,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 		)`,
+		`CREATE TABLE IF NOT EXISTS analysis_url_targets (
+			id SERIAL PRIMARY KEY,
+			analysis_id INTEGER NOT NULL UNIQUE REFERENCES analyses(id) ON DELETE CASCADE,
+			original_url TEXT NOT NULL,
+			final_url TEXT NULL,
+			redirect_count INTEGER NOT NULL DEFAULT 0,
+			redirect_chain JSONB NOT NULL DEFAULT '[]',
+			uses_https BOOLEAN NOT NULL DEFAULT FALSE,
+			host TEXT NOT NULL,
+			content_type TEXT NULL,
+			content_length_bytes BIGINT NULL,
+			http_status_code INTEGER NULL,
+			fetched_at TIMESTAMPTZ NULL,
+			fetch_status VARCHAR NOT NULL,
+			failure_reason TEXT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		)`,
 		`CREATE TABLE IF NOT EXISTS analysis_metadata (
 			id SERIAL PRIMARY KEY,
 			analysis_id INTEGER NOT NULL UNIQUE REFERENCES analyses(id) ON DELETE CASCADE,

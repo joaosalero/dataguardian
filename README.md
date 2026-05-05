@@ -254,13 +254,13 @@ Authenticated product routes:
 - `GET /projects/{id}`: fetch one project owned by the signed-in user.
 - `POST /projects/{id}/audit`: run and store a baseline audit result.
 - `GET /projects/{id}/audits`: list audit results for a project.
-- `POST /analyses`: create a file analysis from a multipart upload.
-- `GET /analyses/{id}`: fetch a completed file analysis result.
+- `POST /analyses`: create a file analysis from a multipart upload, or a URL
+  analysis from a JSON body.
+- `GET /analyses/{id}`: fetch a completed file or URL analysis result.
 
 ### File Analysis
 
-The first analysis slice supports authenticated file uploads only. URL analysis
-is not implemented yet.
+The file analysis slice supports authenticated uploads.
 
 Example:
 
@@ -296,6 +296,51 @@ Security boundary:
   engines.
 - The current implementation is structured for future sandboxing, but does not
   provide a sandbox yet.
+
+### URL Analysis
+
+URL analysis accepts an authenticated JSON request:
+
+```bash
+curl -i \
+  -X POST http://localhost:8000/analyses \
+  -b "dataguardian_session=<session-cookie>" \
+  -H "Content-Type: application/json" \
+  -d '{"projectId":1,"inputType":"URL","url":{"originalUrl":"https://example.com"}}'
+```
+
+Current limits and behavior:
+
+- Only `http` and `https` URLs are accepted.
+- The backend performs passive HTTP GET requests only.
+- JavaScript is not executed, HTML is not rendered, and browser behavior is not
+  simulated.
+- Redirects are followed manually up to 3 hops and recorded in `urlTarget`.
+- Requests time out after 5 seconds.
+- Responses are limited to 2 MB.
+- URL metadata includes content type, content length, host, protocol, HTTP
+  status, and redirect information.
+- Raw response bytes are scanned for base64-like strings, `eval(`, and
+  suspicious long encoded strings.
+- Clean file generation is not implemented for URL analysis, so `cleanFile` is
+  `null`.
+
+URL findings currently include:
+
+- `URL_NO_HTTPS`
+- `URL_REDIRECT_DETECTED`
+- `URL_FETCH_FAILED`
+- `URL_SUSPICIOUS_CONTENT`
+
+URL security boundary:
+
+- URL inputs are treated as untrusted.
+- Localhost, loopback IPs, link-local addresses, and private/internal IP ranges
+  such as `10.0.0.0/8`, `172.16.0.0/12`, and `192.168.0.0/16` are blocked to
+  reduce SSRF risk.
+- The same SSRF checks are applied to redirect targets before each request.
+- The implementation is structured for future network isolation or sandboxing,
+  but does not provide a separate sandbox yet.
 
 ## CI/CD And Dependency Policy
 

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"dataguardian/backend-go/internal/analysis"
 	"dataguardian/backend-go/internal/config"
 	"dataguardian/backend-go/internal/db"
 )
@@ -106,6 +107,197 @@ func TestCreateFileAnalysisRejectsInvalidFileType(t *testing.T) {
 	}
 }
 
+func TestCreateURLAnalysisSuccess(t *testing.T) {
+	store := newFakeAnalysisStore()
+	srv := &server{store: store}
+	originalAnalyzeURL := analyzeURL
+	defer func() { analyzeURL = originalAnalyzeURL }()
+	analyzeURL = func(ctx context.Context, raw string) (analysis.URLResult, error) {
+		contentType := "text/html"
+		contentLength := int64(128)
+		statusCode := http.StatusOK
+		finalURL := "https://example.com/final"
+		target := db.URLTarget{
+			OriginalURL:        raw,
+			FinalURL:           &finalURL,
+			RedirectCount:      1,
+			RedirectChain:      []string{finalURL},
+			UsesHTTPS:          true,
+			Host:               "example.com",
+			ContentType:        &contentType,
+			ContentLengthBytes: &contentLength,
+			HTTPStatusCode:     &statusCode,
+			FetchStatus:        db.FetchStatusSuccess,
+		}
+		findings := []db.Finding{
+			{
+				Type:        db.FindingTypeURL,
+				Code:        "URL_REDIRECT_DETECTED",
+				Title:       "URL redirect detected",
+				Description: "The submitted URL redirected before returning final content.",
+				Severity:    db.SeverityLow,
+				Evidence: db.FindingEvidence{
+					Source: db.FindingEvidenceSourceURL,
+					RuleID: "URL_REDIRECT_DETECTED",
+				},
+			},
+		}
+		return analysis.URLResult{
+			Target: target,
+			Metadata: db.Metadata{
+				SourceType: db.MetadataSourceTypeURLContent,
+				Entries: []db.MetadataEntry{
+					{
+						Key:         "host",
+						Value:       "example.com",
+						Category:    db.MetadataCategoryURL,
+						Sensitivity: db.MetadataSensitivityNonSensitive,
+						Source:      "url",
+						Confidence:  db.MetadataConfidenceHigh,
+					},
+				},
+			},
+			Findings:  findings,
+			RiskScore: analysis.ScoreFindings(findings),
+			Summary:   "URL analysis completed with structured findings.",
+		}, nil
+	}
+	req := httptest.NewRequest(http.MethodPost, "/analyses", strings.NewReader(`{"projectId":7,"inputType":"URL","url":{"originalUrl":"https://example.com"}}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(withUserID(req.Context(), 42))
+	rec := httptest.NewRecorder()
+
+	srv.createAnalysis(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("createAnalysis returned %d with body %s", rec.Code, rec.Body.String())
+	}
+	var response AnalysisResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("response JSON did not decode: %v", err)
+	}
+	if response.URLTarget == nil || response.File != nil || response.CleanFile != nil {
+		t.Fatalf("unexpected URL response shape: %#v", response)
+	}
+	if response.URLTarget.HTTPStatusCode == nil || *response.URLTarget.HTTPStatusCode != http.StatusOK {
+		t.Fatalf("expected http status in URL target: %#v", response.URLTarget)
+	}
+	if response.Metadata.SourceType != db.MetadataSourceTypeURLContent {
+		t.Fatalf("expected URL metadata, got %s", response.Metadata.SourceType)
+	}
+	if len(response.Findings) != 1 || response.Findings[0].Code != "URL_REDIRECT_DETECTED" {
+		t.Fatalf("expected redirect finding, got %#v", response.Findings)
+	}
+}
+
+func TestCreateURLAnalysisRejectsInvalidURL(t *testing.T) {
+	srv := &server{store: newFakeAnalysisStore()}
+	originalAnalyzeURL := analyzeURL
+	defer func() { analyzeURL = originalAnalyzeURL }()
+	analyzeURL = func(ctx context.Context, raw string) (analysis.URLResult, error) {
+		return analysis.URLResult{}, analysis.ErrInvalidURL
+	}
+	req := httptest.NewRequest(http.MethodPost, "/analyses", strings.NewReader(`{"projectId":7,"inputType":"URL","url":{"originalUrl":"file:///etc/passwd"}}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(withUserID(req.Context(), 42))
+	rec := httptest.NewRecorder()
+
+	srv.createAnalysis(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("createAnalysis returned %d, expected %d", rec.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(rec.Body.String(), "Invalid or unsafe URL") {
+		t.Fatalf("unexpected response body: %s", rec.Body.String())
+	}
+}
+
+func TestGetURLAnalysisSuccess(t *testing.T) {
+	store := newFakeAnalysisStore()
+	now := time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC)
+	store.analysis = db.Analysis{
+		ID:          99,
+		ProjectID:   7,
+		InputType:   db.InputTypeURL,
+		Status:      db.AnalysisStatusCompleted,
+		Summary:     "URL analysis completed with structured findings.",
+		StartedAt:   now,
+		CompletedAt: &now,
+	}
+	finalURL := "https://example.com/final"
+	store.urlTarget = db.URLTarget{
+		ID:            103,
+		AnalysisID:    99,
+		OriginalURL:   "https://example.com",
+		FinalURL:      &finalURL,
+		RedirectCount: 1,
+		RedirectChain: []string{finalURL},
+		UsesHTTPS:     true,
+		Host:          "example.com",
+		FetchStatus:   db.FetchStatusSuccess,
+	}
+	store.metadata = db.Metadata{
+		ID:         101,
+		AnalysisID: 99,
+		SourceType: db.MetadataSourceTypeURLContent,
+		Entries: []db.MetadataEntry{
+			{
+				Key:         "host",
+				Value:       "example.com",
+				Category:    db.MetadataCategoryURL,
+				Sensitivity: db.MetadataSensitivityNonSensitive,
+				Source:      "url",
+				Confidence:  db.MetadataConfidenceHigh,
+			},
+		},
+	}
+	store.findings = []db.Finding{
+		{
+			ID:         1,
+			AnalysisID: 99,
+			Type:       db.FindingTypeURL,
+			Code:       "URL_REDIRECT_DETECTED",
+			Title:      "URL redirect detected",
+			Severity:   db.SeverityLow,
+			Evidence: db.FindingEvidence{
+				Source: db.FindingEvidenceSourceURL,
+				RuleID: "URL_REDIRECT_DETECTED",
+			},
+		},
+	}
+	store.riskScore = db.RiskScore{
+		ID:         102,
+		AnalysisID: 99,
+		Score:      10,
+		Level:      db.RiskLevelLow,
+		Drivers:    []db.RiskDriver{},
+	}
+	srv := &server{store: store}
+	req := httptest.NewRequest(http.MethodGet, "/analyses/99", nil)
+	req.SetPathValue("id", "99")
+	req = req.WithContext(withUserID(req.Context(), 42))
+	rec := httptest.NewRecorder()
+
+	srv.getAnalysis(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("getAnalysis returned %d with body %s", rec.Code, rec.Body.String())
+	}
+	var response AnalysisResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("response JSON did not decode: %v", err)
+	}
+	if response.URLTarget == nil || response.File != nil || response.CleanFile != nil {
+		t.Fatalf("unexpected URL response shape: %#v", response)
+	}
+	if response.URLTarget.RedirectCount != 1 || response.URLTarget.RedirectChain[0] != finalURL {
+		t.Fatalf("expected URL target redirect details, got %#v", response.URLTarget)
+	}
+	if response.Metadata.SourceType != db.MetadataSourceTypeURLContent {
+		t.Fatalf("expected URL metadata, got %s", response.Metadata.SourceType)
+	}
+}
+
 func TestValidateCreateAnalysisRequest(t *testing.T) {
 	validFile := CreateAnalysisRequest{
 		ProjectID: 1,
@@ -176,6 +368,7 @@ func multipartAnalysisBody(t *testing.T, fields map[string]string, filename stri
 type fakeAnalysisStore struct {
 	analysis    db.Analysis
 	createdFile db.File
+	urlTarget   db.URLTarget
 	metadata    db.Metadata
 	findings    []db.Finding
 	riskScore   db.RiskScore
@@ -258,7 +451,13 @@ func (f *fakeAnalysisStore) FileByAnalysisID(ctx context.Context, analysisID int
 }
 
 func (f *fakeAnalysisStore) CreateURLTarget(ctx context.Context, target db.URLTarget) (db.URLTarget, error) {
-	return db.URLTarget{}, db.ErrNotImplemented
+	target.ID = 103
+	f.urlTarget = target
+	return target, nil
+}
+
+func (f *fakeAnalysisStore) URLTargetByAnalysisID(ctx context.Context, analysisID int64) (db.URLTarget, error) {
+	return f.urlTarget, nil
 }
 
 func (f *fakeAnalysisStore) SaveMetadata(ctx context.Context, metadata db.Metadata) (db.Metadata, error) {

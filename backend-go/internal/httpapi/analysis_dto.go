@@ -68,6 +68,7 @@ type AnalysisURLTarget struct {
 	Host               string         `json:"host"`
 	ContentType        *string        `json:"contentType"`
 	ContentLengthBytes *int64         `json:"contentLengthBytes"`
+	HTTPStatusCode     *int           `json:"httpStatusCode"`
 	FetchStatus        db.FetchStatus `json:"fetchStatus"`
 	FailureReason      *string        `json:"failureReason"`
 }
