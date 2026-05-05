@@ -13,14 +13,14 @@ def test_runtime_uses_go_backend_only() -> None:
 
     assert "backend-go" in compose
     assert "container_name: dataguardian_backend_go" in compose
-    assert "golang:1.25" in compose
+    assert "context: ./backend-go" in compose
     assert "image: python" not in compose
     assert "uvicorn" not in compose
     assert "go 1.25.0" in go_mod
 
-    assert "compose up -d db backend-go" in start_script
-    assert "compose up -d --force-recreate frontend" in start_script
-    assert "go run ./cmd/server" in compose
+    assert "compose up -d --build db backend-go" in start_script
+    assert "compose up -d --build --force-recreate frontend" in start_script
+    assert "go run ./cmd/server" not in compose
     assert "uvicorn" not in start_script
     assert "--backend=python" not in start_script
     assert "BACKEND_MODE" not in start_script

@@ -86,8 +86,8 @@ if port_in_use "$FRONTEND_PORT" && ! http_ok "http://localhost:$FRONTEND_PORT/lo
 fi
 
 log "starting Docker Compose services: db backend-go frontend"
-compose up -d db backend-go
-compose up -d --force-recreate frontend
+compose up -d --build db backend-go
+compose up -d --build --force-recreate frontend
 
 wait_for_http "backend" "http://localhost:$BACKEND_PORT/health" 45
 wait_for_http "frontend" "http://localhost:$FRONTEND_PORT/login" 60

@@ -4,56 +4,76 @@ services:
     container_name: dataguardian_db
     restart: always
     environment:
-      POSTGRES_USER: dataguardian
-      POSTGRES_PASSWORD: dataguardian
-      POSTGRES_DB: dataguardian
+      POSTGRES_USER: ${POSTGRES_USER:-dataguardian}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dataguardian}
+      POSTGRES_DB: ${POSTGRES_DB:-dataguardian}
     ports:
       - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-dataguardian} -d $${POSTGRES_DB:-dataguardian}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   backend-go:
-    image: golang:1.25
+    build:
+      context: ./backend-go
     container_name: dataguardian_backend_go
-    working_dir: /app/backend-go
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
-      APP_NAME: DataGuardian
-      ENVIRONMENT: dev
-      DATABASE_URL: postgresql://dataguardian:dataguardian@db:5432/dataguardian
-      ACCESS_TOKEN_EXPIRE_MINUTES: "30"
-      GO_BACKEND_ADDR: 0.0.0.0:8000
+      APP_NAME: ${APP_NAME:-DataGuardian}
+      ENVIRONMENT: ${ENVIRONMENT:-dev}
+      DATABASE_URL: ${BACKEND_DATABASE_URL:-postgresql://dataguardian:dataguardian@db:5432/dataguardian}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-dataguardian_session}
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
+      STORAGE_DIR: ${STORAGE_DIR:-/data/uploads}
+      GO_BACKEND_ADDR: ${GO_BACKEND_ADDR:-0.0.0.0:8000}
     ports:
       - "8000:8000"
     volumes:
-      - .:/app
-      - go_module_cache:/go/pkg/mod
-    command: go run ./cmd/server
+      - backend_uploads:/data/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
   frontend:
-    image: node:20-slim
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_ENVIRONMENT: ${NEXT_PUBLIC_ENVIRONMENT:-dev}
     container_name: dataguardian_frontend
-    working_dir: /app/frontend
+    depends_on:
+      backend-go:
+        condition: service_healthy
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
-      NEXT_PUBLIC_ENVIRONMENT: dev
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_ENVIRONMENT: ${NEXT_PUBLIC_ENVIRONMENT:-dev}
     ports:
       - "3000:3000"
+
+  backend-go-test:
+    image: golang:1.25
+    profiles: ["test"]
+    working_dir: /app/backend-go
+    environment:
+      DATABASE_URL: ${BACKEND_DATABASE_URL:-postgresql://dataguardian:dataguardian@db:5432/dataguardian}
     volumes:
       - .:/app
-      - frontend_node_modules:/app/frontend/node_modules
-      - frontend_next_cache:/app/frontend/.next
-    command: >
-      sh -c "find .next -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true;
-      npm install &&
-      npm run dev -- -H 0.0.0.0 -p 3000"
+      - go_module_cache:/go/pkg/mod
+    command: go test ./...
 
 volumes:
   postgres_data:
-  frontend_node_modules:
-  frontend_next_cache:
+  backend_uploads:
   go_module_cache:
 
-# Run: docker compose up -d
-# Stop: docker-compose down
+# Run: docker compose up
+# Stop: docker compose down

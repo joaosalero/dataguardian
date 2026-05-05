@@ -103,14 +103,46 @@ gates where code scanning can be added.
 
 ## Execution Modes
 
+### Quick Start
+
+Prerequisite: Docker with Docker Compose.
+
+Start the complete system:
+
+```bash
+docker compose up
+```
+
+Open:
+
+```text
+Frontend: http://localhost:3000
+Backend:  http://localhost:8000
+Health:   http://localhost:8000/health
+```
+
+The default Docker configuration starts PostgreSQL, the compiled Go backend,
+and the production Next.js frontend. Local dev/test users are bootstrapped in
+the default `dev` environment:
+
+```text
+admin / admin123
+test  / test123
+```
+
+No `.env` file is required for local use. Copy `.env.example` to `.env` only
+when overriding ports, credentials, cookie settings, or public frontend API
+URL.
+
 ### Manual Usage
 
 ```bash
 ./start.sh manual
 ```
 
-Manual mode starts PostgreSQL, the Go backend, and the frontend through Docker
-Compose. It waits for readiness and then follows backend and frontend logs.
+Manual mode starts PostgreSQL, the compiled Go backend, and the production
+frontend through Docker Compose. It waits for readiness and then follows
+backend and frontend logs.
 
 Open:
 
@@ -161,6 +193,12 @@ installed, E2E is skipped gracefully:
 
 ## Setup And Commands
 
+Run the Docker-first stack:
+
+```bash
+docker compose up
+```
+
 Install frontend dependencies:
 
 ```bash
@@ -191,6 +229,12 @@ cd backend-go
 go test ./...
 ```
 
+Run backend tests through Docker when local Go is unavailable:
+
+```bash
+docker compose run --rm backend-go-test go test ./...
+```
+
 Run frontend type check:
 
 ```bash
@@ -210,6 +254,39 @@ Run optional E2E tests after the stack is running:
 ```bash
 pytest tests/e2e
 ```
+
+### E2E Testing
+
+The browser E2E test uses pytest and Playwright to exercise the full user flow
+against running local services:
+
+- frontend: `http://localhost:3000`
+- backend: `http://localhost:8000`
+
+Install the optional Python test tools:
+
+```bash
+./scripts/install.sh
+```
+
+If installing manually, install pytest and Playwright, then install the browser
+runtime:
+
+```bash
+python -m pip install pytest pytest-playwright
+python -m playwright install chromium
+```
+
+Start the stack before running E2E:
+
+```bash
+./scripts/up.sh
+pytest tests/e2e/test_full_flow.py
+```
+
+The test registers a unique user, logs in through the browser, creates a
+project in the dashboard, creates file and URL analyses with the authenticated
+browser session, then verifies dashboard history and analysis details.
 
 Build local backend binaries:
 

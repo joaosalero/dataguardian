@@ -1,0 +1,9 @@
+.git
+.codex
+.agents
+bin
+build
+dist
+*.test
+*.out
+coverage.out

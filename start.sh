@@ -133,7 +133,7 @@ warn_pytest_missing() {
 }
 
 run_go_tests() {
-  compose run --rm backend-go go test ./...
+  compose run --rm backend-go-test go test ./...
 }
 
 start_services() {
@@ -142,8 +142,8 @@ start_services() {
   require_port_available_or_dataguardian 3000 "http://localhost:3000/login" "Frontend" || true
 
   log "Starting Docker Compose services: db backend-go frontend"
-  compose up -d db backend-go
-  compose up -d --force-recreate frontend
+  compose up -d --build db backend-go
+  compose up -d --build --force-recreate frontend
 
   for _ in $(seq 1 30); do
     if compose exec -T db pg_isready -U dataguardian -d dataguardian >/dev/null 2>&1; then
