@@ -111,6 +111,10 @@ func buildURLAnalysisResponse(
 func analysisFindings(findings []db.Finding) []AnalysisFinding {
 	response := make([]AnalysisFinding, 0, len(findings))
 	for _, finding := range findings {
+		explanation, recommendation := explainFinding(finding)
+		if finding.Recommendation != nil {
+			recommendation = finding.Recommendation
+		}
 		response = append(response, AnalysisFinding{
 			ID:             finding.ID,
 			Type:           finding.Type,
@@ -119,10 +123,23 @@ func analysisFindings(findings []db.Finding) []AnalysisFinding {
 			Description:    finding.Description,
 			Severity:       finding.Severity,
 			Evidence:       finding.Evidence,
-			Recommendation: finding.Recommendation,
+			Explanation:    explanation,
+			Recommendation: recommendation,
 		})
 	}
 	return response
+}
+
+func explainFinding(finding db.Finding) (string, *string) {
+	if explanationProvider == nil {
+		return "", finding.Recommendation
+	}
+	// Explanations are best-effort response decoration; failures never block analysis results.
+	result, err := explanationProvider.ExplainFinding(finding)
+	if err != nil {
+		return "", finding.Recommendation
+	}
+	return result.Explanation, stringPtrOrNil(result.Recommendation)
 }
 
 func analysisMetadata(metadata db.Metadata) AnalysisMetadata {

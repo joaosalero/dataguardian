@@ -262,9 +262,21 @@ Authenticated product routes:
 The authenticated dashboard shows project audit results and a flat analysis
 history. Analysis rows include target type, status, risk level, and timestamp.
 Selecting an analysis loads the existing `GET /analyses/{id}` result and shows
-summary, findings, metadata, risk score, and clean-file status when available.
-The history endpoint is scoped through the signed-in user's projects, so users
-only see analyses attached to projects they own.
+summary, findings, deterministic explanations, metadata, risk score, and
+clean-file status when available. The history endpoint is scoped through the
+signed-in user's projects, so users only see analyses attached to projects they
+own.
+
+Analysis responses include an explanation layer for each finding. This layer is
+template-based and deterministic: it explains findings that already exist,
+suggests mitigation, and contextualizes risk. It does not detect
+vulnerabilities, change findings, change scoring, execute content, fetch
+external data, or call an external AI service. A provider interface exists so a
+future LLM-based explainer can be plugged in without changing the detection
+pipeline.
+
+Pagination and filtering are not implemented yet. They are planned future work
+for larger analysis histories and improved dashboard UX.
 
 ### File Analysis
 

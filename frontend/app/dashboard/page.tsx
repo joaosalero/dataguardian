@@ -36,6 +36,8 @@ type AnalysisFinding = {
   title: string;
   description: string;
   severity: string;
+  explanation?: string;
+  recommendation?: string | null;
 };
 
 type MetadataEntry = {
@@ -489,6 +491,14 @@ export default function DashboardPage() {
                         </div>
                         <p className="mt-1 text-xs text-gray-500">{finding.code}</p>
                         <p className="mt-2 text-sm text-gray-600">{finding.description}</p>
+                        {finding.explanation ? (
+                          <p className="mt-3 text-sm text-gray-700">{finding.explanation}</p>
+                        ) : null}
+                        {finding.recommendation ? (
+                          <p className="mt-2 text-sm font-medium text-gray-800">
+                            Mitigation: {finding.recommendation}
+                          </p>
+                        ) : null}
                       </article>
                     ))}
                   </div>

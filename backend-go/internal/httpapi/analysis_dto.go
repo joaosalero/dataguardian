@@ -92,6 +92,7 @@ type AnalysisFinding struct {
 	Description    string             `json:"description"`
 	Severity       db.Severity        `json:"severity"`
 	Evidence       db.FindingEvidence `json:"evidence"`
+	Explanation    string             `json:"explanation,omitempty"`
 	Recommendation *string            `json:"recommendation"`
 }
 
