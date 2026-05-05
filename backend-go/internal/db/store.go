@@ -20,6 +20,23 @@ type User struct {
 	CreatedAt      time.Time
 }
 
+type Project struct {
+	ID        int64     `json:"id"`
+	UserID    int64     `json:"user_id"`
+	Name      string    `json:"name"`
+	Target    string    `json:"target"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type Audit struct {
+	ID        int64     `json:"id"`
+	ProjectID int64     `json:"project_id"`
+	Status    string    `json:"status"`
+	Summary   string    `json:"summary"`
+	Findings  []string  `json:"findings"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 func Open(databaseURL string) (*Store, error) {
 	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {
@@ -60,6 +77,28 @@ CREATE TABLE IF NOT EXISTS users (
 		`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE`,
 		`ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE`,
 		`ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant_id VARCHAR NULL`,
+	} {
+		if _, err := s.db.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+
+	for _, statement := range []string{
+		`CREATE TABLE IF NOT EXISTS projects (
+			id SERIAL PRIMARY KEY,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			name VARCHAR NOT NULL,
+			target VARCHAR NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		)`,
+		`CREATE TABLE IF NOT EXISTS audits (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			status VARCHAR NOT NULL,
+			summary TEXT NOT NULL,
+			findings TEXT[] NOT NULL DEFAULT '{}',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		)`,
 	} {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
 			return err
@@ -129,6 +168,101 @@ func (s *Store) EnsureLocalUser(
 		isAdmin,
 	)
 	return err
+}
+
+func (s *Store) CreateProject(ctx context.Context, userID int64, name string, target string) (Project, error) {
+	var project Project
+	err := s.db.QueryRowContext(
+		ctx,
+		`INSERT INTO projects (user_id, name, target)
+		 VALUES ($1, $2, $3)
+		 RETURNING id, user_id, name, target, created_at`,
+		userID,
+		name,
+		target,
+	).Scan(&project.ID, &project.UserID, &project.Name, &project.Target, &project.CreatedAt)
+	return project, err
+}
+
+func (s *Store) ProjectsByUser(ctx context.Context, userID int64) ([]Project, error) {
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT id, user_id, name, target, created_at
+		 FROM projects
+		 WHERE user_id = $1
+		 ORDER BY created_at DESC, id DESC`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	projects := []Project{}
+	for rows.Next() {
+		var project Project
+		if err := rows.Scan(&project.ID, &project.UserID, &project.Name, &project.Target, &project.CreatedAt); err != nil {
+			return nil, err
+		}
+		projects = append(projects, project)
+	}
+	return projects, rows.Err()
+}
+
+func (s *Store) ProjectByID(ctx context.Context, userID int64, projectID int64) (Project, error) {
+	var project Project
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT id, user_id, name, target, created_at
+		 FROM projects
+		 WHERE id = $1 AND user_id = $2`,
+		projectID,
+		userID,
+	).Scan(&project.ID, &project.UserID, &project.Name, &project.Target, &project.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Project{}, ErrNotFound
+	}
+	return project, err
+}
+
+func (s *Store) CreateAudit(ctx context.Context, projectID int64, status string, summary string, findings []string) (Audit, error) {
+	var audit Audit
+	err := s.db.QueryRowContext(
+		ctx,
+		`INSERT INTO audits (project_id, status, summary, findings)
+		 VALUES ($1, $2, $3, $4)
+		 RETURNING id, project_id, status, summary, findings, created_at`,
+		projectID,
+		status,
+		summary,
+		findings,
+	).Scan(&audit.ID, &audit.ProjectID, &audit.Status, &audit.Summary, &audit.Findings, &audit.CreatedAt)
+	return audit, err
+}
+
+func (s *Store) AuditsByProject(ctx context.Context, projectID int64) ([]Audit, error) {
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT id, project_id, status, summary, findings, created_at
+		 FROM audits
+		 WHERE project_id = $1
+		 ORDER BY created_at DESC, id DESC`,
+		projectID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	audits := []Audit{}
+	for rows.Next() {
+		var audit Audit
+		if err := rows.Scan(&audit.ID, &audit.ProjectID, &audit.Status, &audit.Summary, &audit.Findings, &audit.CreatedAt); err != nil {
+			return nil, err
+		}
+		audits = append(audits, audit)
+	}
+	return audits, rows.Err()
 }
 
 var ErrNotFound = errors.New("not found")

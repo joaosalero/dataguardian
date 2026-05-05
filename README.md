@@ -67,9 +67,11 @@ Active runtime services:
 - `backend-go`: Go API
 - `frontend`: Next.js application
 
-The Go API handles registration, login, session validation, logout, local
-dev/test bootstrap users, and PostgreSQL persistence. The frontend provides the
-login, registration, authenticated dashboard, and session-aware navigation.
+The Go API handles registration, login, session validation, logout, project
+tracking, baseline audit runs, local dev/test bootstrap users, and PostgreSQL
+persistence. The frontend provides login, registration, an authenticated
+dashboard, project creation, audit execution, audit results, and session-aware
+navigation.
 
 The legacy Python implementation is not part of Docker, CI, startup scripts, or
 the active runtime.
@@ -242,6 +244,16 @@ Inspect ports and Docker state:
 ```bash
 ./scripts/doctor.sh
 ```
+
+## Product API
+
+Authenticated product routes:
+
+- `GET /projects`: list projects for the signed-in user.
+- `POST /projects`: create a project with `name` and `target`.
+- `GET /projects/{id}`: fetch one project owned by the signed-in user.
+- `POST /projects/{id}/audit`: run and store a baseline audit result.
+- `GET /projects/{id}/audits`: list audit results for a project.
 
 ## CI/CD And Dependency Policy
 
