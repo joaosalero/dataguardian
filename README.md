@@ -237,7 +237,28 @@ GitHub Actions runs on push and pull request:
 7. Run the repository secret scan.
 8. Build the frontend.
 
-CI does not run the legacy Python backend.
+Backend tests and security checks are mandatory. The frontend build still runs on
+every push and pull request, but frontend build failures from Dependabot pull
+requests are treated as non-blocking so dependency automation cannot make the
+main pipeline noisy. Human pull requests and pushes still require a passing
+frontend build. CI does not run the legacy Python backend.
+
+## Dependency Management
+
+Frontend dependencies are intentionally conservative. Direct frontend
+dependencies in `frontend/package.json` are pinned to exact versions and
+installed with `npm ci` from `frontend/package-lock.json` for deterministic
+builds.
+
+Dependabot is restricted for the frontend npm ecosystem: automatic version
+updates are limited to patch-level changes, while semver minor and major bumps
+are ignored. Major framework/tooling upgrades, including Tailwind CSS,
+TypeScript, React type packages, Next.js, and React, require manual review and a
+dedicated compatibility pass before they are merged.
+
+Security checks remain mandatory. Vulnerability findings should be resolved
+deliberately, either through a safe patch update or a manually reviewed upgrade
+when a patch is not available.
 
 ## Project Structure
 
