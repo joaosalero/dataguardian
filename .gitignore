@@ -59,4 +59,5 @@ codex/
 backend-legacy-python/
 dist/
 node_modules/
-.pytest_cache/
+.pytest_cache/*.tar.gz
+go*.tar.gz
