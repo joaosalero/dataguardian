@@ -1,82 +1,115 @@
 # DataGuardian
 
-DataGuardian is a local-first security auditing and authentication demo built as a real engineering portfolio project. It shows a complete product slice: a Go API, a Next.js UI, PostgreSQL, Docker Compose orchestration, browser E2E tests, security checks, and CI.
+DataGuardian is a local-first security auditing and authentication demo built as
+a production-style portfolio project. It combines a Go API, a Next.js frontend,
+PostgreSQL, Docker Compose orchestration, security checks, CI, and optional
+browser E2E testing into a small but realistic product slice.
 
-The current application focuses on stable authentication and project readiness after a Python-to-Go backend migration. The historical Python backend is isolated under `backend-legacy-python/` for reference only. It is not executed by Docker, `start.sh`, CI, or any active runtime script.
+The project exists to show more than a working screen. It demonstrates how a
+system is made runnable, testable, secure by default, and understandable to the
+next engineer who has to operate it.
 
 ## What It Solves
 
-DataGuardian is intended to become a database security review tool. In its current version it provides the stable foundation needed before expanding the product:
-
-- Register and sign in users securely.
-- Store users in PostgreSQL.
-- Use HttpOnly RS256 JWT session cookies.
-- Run the same local stack through deterministic scripts.
-- Validate behavior with Go tests, Playwright E2E tests, security scripts, and CI.
-
-This repository is intentionally scoped. Multi-tenant SaaS behavior, RBAC, audit trails, billing, and cloud deployment are future phases, not partially implemented features.
+- Provides a secure authentication foundation for a future database security
+  review tool.
+- Runs locally through deterministic scripts and Docker Compose.
+- Keeps the active backend simple and explicit: Go is the only runtime backend.
+- Separates core functionality from optional testing tools so the app works
+  without Python.
+- Shows security and dependency hygiene as part of normal development, not as an
+  afterthought.
 
 ## Architecture
 
-Active runtime:
-
-- Backend: Go 1.25+, `net/http`, `pgx`, Argon2id password hashing, RS256 JWTs.
-- Frontend: Next.js, React, TypeScript, Tailwind CSS.
-- Database: PostgreSQL 15 through Docker Compose.
-- Orchestration: `start.sh`, `scripts/up.sh`, Docker Compose.
-- Tests: Go tests and Playwright E2E tests through pytest tooling.
-- Security automation: npm audit, repository secret scan, runtime exposure audit.
-- CI/CD: GitHub Actions.
-
-Docker Compose starts exactly these services:
-
 ```text
-db
-backend-go
-frontend
+Browser
+  |
+  v
+Next.js frontend  --->  Go HTTP API  --->  PostgreSQL 15
+                              |
+                              v
+                       Security middleware
+                       Auth, cookies, rate limits
 ```
 
-The Go backend is the only active backend runtime and source of truth.
+### Go Backend
+
+The active backend lives in `backend-go/`. Go was chosen for the consolidated
+runtime because it gives the project a small deployment footprint, clear
+standard-library HTTP behavior, strong static typing, and straightforward
+concurrency and timeout controls.
+
+The API currently handles:
+
+- User registration and login.
+- Argon2id password hashing.
+- RS256 JWT session cookies.
+- Authenticated profile lookup.
+- Local dev/test bootstrap users.
+- PostgreSQL persistence through `pgx`.
+- Security headers, HTTPS enforcement in production, CORS, tenant context, and
+  auth rate limiting.
+
+The previous Python backend is intentionally not part of the active runtime.
+`backend-legacy-python/` is ignored and treated as historical reference only.
+
+### Next.js Frontend
+
+The frontend lives in `frontend/` and uses Next.js, React, TypeScript, and
+Tailwind CSS. It provides login, registration, session verification, logout, and
+a minimal dashboard that confirms the Go backend is active.
+
+Frontend dependencies are pinned exactly and installed from
+`frontend/package-lock.json` with `npm ci` in CI and local validation.
+
+### Docker Orchestration
+
+`docker-compose.yml` starts exactly these services:
+
+- `db`: PostgreSQL 15
+- `backend-go`: Go API
+- `frontend`: Next.js dev server
+
+Docker volumes isolate container `node_modules`, Next.js cache, PostgreSQL data,
+and Go module cache from the host checkout.
+
+### Optional Python E2E
+
+Python is not a backend runtime. It is used only for optional pytest and
+Playwright E2E tests under `tests/e2e/`. All core commands are designed to keep
+working when pytest is not installed; E2E checks are skipped with a warning.
+
+## Technical Highlights
+
+- Security-first authentication: Argon2id passwords and RS256 JWT validation.
+- HttpOnly session cookies with production `Secure` mode.
+- Production config checks for database URL, JWT keys, and encryption key.
+- HTTPS enforcement in production through TLS or `X-Forwarded-Proto`.
+- Auth rate limiting for login and registration.
+- Security headers on both API and frontend responses.
+- Dependency scanning with `npm audit --audit-level=high`.
+- Repository secret detection through `security/run_security_checks.sh`.
+- Runtime exposure audit through `security/audit.sh`.
+- CI separation between backend tests, security checks, and frontend build.
+- CodeQL-ready structure: source is separated by runtime, generated artifacts
+  are ignored, and CI has clear places to add GitHub code scanning.
+- Conservative Dependabot policy for frontend packages: patch updates are
+  allowed automatically; minor and major upgrades require manual review.
 
 ## Requirements
 
-For normal local use:
+For normal local usage:
 
-- Docker and Docker Compose.
+- Docker and Docker Compose
 
-For development and automated testing:
+For host-side development and validation:
 
-- Go 1.25 or newer.
-- Node.js 20 and npm.
-- Python 3.12 only if you want optional pytest/Playwright E2E testing.
+- Go 1.25 or newer, or Docker Compose for Go tests through the container
+- Node.js 20 and npm
+- Python 3.12 only if you want optional pytest/Playwright E2E tests
 
-Python is not required for core functionality and is not used as a backend runtime.
-
-## Setup
-
-Install local frontend dependencies:
-
-```bash
-./scripts/install.sh
-```
-
-This installs optional pytest tooling into `.venv/` and installs frontend dependencies. The application itself still runs without Python or `.venv/`; pytest is only used for optional E2E checks. `.venv/`, `node_modules/`, `.next/`, logs, caches, local databases, and `.env` files are ignored by Git. Docker Compose keeps the container's `node_modules` and `.next` output in Docker volumes so container dev mode does not overwrite host build artifacts.
-
-Optional local `.env`:
-
-```env
-APP_NAME=DataGuardian
-ENVIRONMENT=dev
-DEBUG=true
-DATABASE_URL=postgresql://dataguardian:dataguardian@localhost:5434/dataguardian
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-```
-
-Do not commit `.env` files, JWT keys, tokens, credentials, or production database URLs.
-
-## Usage Modes
-
-### 1. Normal Local Use
+## Quick Start
 
 Start the application:
 
@@ -92,220 +125,219 @@ Backend:  http://localhost:8000
 Health:   http://localhost:8000/health
 ```
 
-`start.sh manual` starts `db`, `backend-go`, and `frontend` through Docker Compose and follows backend/frontend logs. It does not kill unrelated processes. If ports `3000` or `8000` are owned by another process, it stops with a clear error.
+Local dev/test users:
 
-Equivalent service-only command:
-
-```bash
-./scripts/up.sh
+```text
+admin / admin123
+test  / test123
 ```
 
-### 2. Manual Testing And Visual Verification
+These users are bootstrapped only in `dev` and `test` environments.
 
-Start the stack:
+## Execution Modes
+
+### Manual Usage
 
 ```bash
 ./start.sh manual
 ```
 
-Use the development test user:
+Manual mode starts PostgreSQL, the Go backend, and the frontend, waits for
+readiness, then follows backend and frontend logs.
 
-```text
-Username: admin
-Password: admin123
-```
-
-Then verify:
-
-1. Open `http://localhost:3000/login`.
-2. Sign in with `admin / admin123`.
-3. Confirm navigation to `/dashboard`.
-4. Confirm the dashboard shows the signed-in user.
-
-To run browser E2E tests visibly:
+Equivalent service-only startup:
 
 ```bash
-./start.sh auto --visual
+./scripts/up.sh
 ```
 
-The `admin` and `test` local users are created only in `dev` and `test` environments. They are never bootstrapped in production.
-
-### 3. Automated Testing
-
-Run the full local automation flow:
+### Automated Mode
 
 ```bash
 ./start.sh auto
 ```
 
-This runs security checks, starts the Docker Compose services, runs the runtime audit, and runs Go tests. If pytest is available, it also runs Playwright E2E tests. If pytest is not available, E2E tests are skipped with:
+Automated mode runs security checks, starts the Docker stack, runs the runtime
+security audit, executes Go backend tests, and runs E2E tests only when pytest is
+available.
 
-```text
-[WARN] pytest not found. Skipping E2E tests.
+Visual E2E mode:
+
+```bash
+./start.sh auto --visual
 ```
 
-Run the local test bundle:
+### Local Test Bundle
 
 ```bash
 ./run-tests.sh
 ```
 
-`./run-tests.sh` always runs Go tests and the frontend build. It uses host Go when Go 1.25+ is available; otherwise it runs Go tests through the Docker Compose `backend-go` service. If pytest is available, it also runs the architecture contract test and Playwright E2E tests. If pytest is missing, those pytest-based checks are skipped with the same warning.
+This runs Go tests and the frontend production build. If pytest is installed, it
+also runs the architecture contract test and browser E2E tests. If pytest is not
+installed, E2E is skipped and the command can still pass.
 
-Run individual checks:
+## Setup Commands
 
-```bash
-cd backend-go && go test ./...
-cd frontend && npm run build
-```
-
-### Optional E2E Testing (pytest)
-
-The project works without Python. Python and pytest are only needed for optional browser E2E testing.
-
-Install pytest tooling globally or in your own environment:
+Install frontend dependencies only:
 
 ```bash
-pip install pytest pytest-playwright
+cd frontend
+npm ci
 ```
 
-Or keep it outside the repository:
+Optional E2E tooling setup:
 
 ```bash
-python3 -m venv /tmp/dataguardian-pytest
-/tmp/dataguardian-pytest/bin/pip install pytest pytest-playwright
+./scripts/install.sh
 ```
 
-If you use a pytest binary outside `PATH`, set `PYTEST_BIN`:
+`scripts/install.sh` creates `.venv/`, installs `pytest` and
+`pytest-playwright`, and runs `npm ci` for the frontend. This is useful for
+browser E2E development, but it is not required to run the application.
+
+## Test Commands
+
+Backend tests:
 
 ```bash
-PYTEST_BIN=/path/to/pytest ./start.sh auto
-PYTEST_BIN=/path/to/pytest ./run-tests.sh
+cd backend-go
+go test ./...
 ```
 
-The script detection order is:
+Frontend type check:
 
-1. Use `PYTEST_BIN` if it is set.
-2. Else use `pytest` from `PATH` if available.
-3. Else print the warning and skip E2E tests.
+```bash
+cd frontend
+npm run test
+```
 
-## Security Model
+Frontend build:
 
-Authentication:
+```bash
+cd frontend
+npm run build
+```
 
-- Passwords are hashed with Argon2id.
-- Plaintext passwords are never stored.
-- JWT access tokens are signed with RS256.
-- JWT validation requires `exp`, `iat`, and `sub`.
-- The signing algorithm is pinned to RS256.
-- `/auth/login` and `/auth/register` are rate limited.
+Full local bundle:
 
-Cookies:
+```bash
+./run-tests.sh
+```
 
-- Sessions are stored in HttpOnly cookies.
-- Cookies use `SameSite=Lax`.
-- Cookies are marked `Secure` in production.
-- The frontend uses `credentials: "include"` and does not store JWTs in `localStorage`.
+Optional E2E tests, after the stack is running and pytest tooling is installed:
 
-Production assumptions:
+```bash
+pytest tests/e2e
+```
 
-- `ENVIRONMENT=prod` requires `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, and `FERNET_KEY`.
-- JWT keys must come from a secret manager or deployment environment.
-- Production requests must arrive over HTTPS or through a proxy that sets `X-Forwarded-Proto: https`.
-- Fernet is reserved for future reversible sensitive data encryption. It is not used for passwords.
+Build local backend distributables:
 
-Security commands:
+```bash
+./scripts/build_go.sh
+```
+
+This writes generated binaries under `dist/`, which is intentionally ignored.
+
+## Security Commands
+
+Static dependency and secret checks:
 
 ```bash
 ./security/run_security_checks.sh
+```
+
+Secret-only checks:
+
+```bash
 ./security/run_security_checks.sh --secrets-only
+```
+
+Runtime exposure audit, after the stack is running:
+
+```bash
 ./security/audit.sh
 ```
 
-The security scripts check Node dependency risk, tracked/untracked repository files for obvious secret assignments, `.env` ignore/tracking status, and runtime responses for stack traces or sensitive leakage.
+Diagnostics for ports and Docker state:
+
+```bash
+./scripts/doctor.sh
+```
 
 ## CI/CD
 
 GitHub Actions runs on push and pull request:
 
-1. Start PostgreSQL 15.
-2. Set up Go from `backend-go/go.mod`.
-3. Run `go test ./...`.
-4. Set up Python only for the architecture contract test.
-5. Install frontend dependencies with `npm ci`.
-6. Run `npm audit --audit-level=high`.
-7. Run the repository secret scan.
-8. Build the frontend.
+- `backend-tests`: starts PostgreSQL, sets up Go, runs `go test ./...`, and runs
+  the architecture contract test.
+- `security-checks`: installs frontend dependencies, runs
+  `npm audit --audit-level=high`, and runs repository secret checks.
+- `frontend-build`: installs frontend dependencies and runs `npm run build`.
 
-Backend tests and security checks are mandatory. The frontend build still runs on
-every push and pull request, but frontend build failures from Dependabot pull
-requests are treated as non-blocking so dependency automation cannot make the
+Backend tests and security checks are mandatory. The frontend build still runs
+on every push and pull request, but frontend build failures from Dependabot pull
+requests are non-blocking so automated frontend dependency PRs cannot make the
 main pipeline noisy. Human pull requests and pushes still require a passing
-frontend build. CI does not run the legacy Python backend.
+frontend build.
+
+CI does not run the legacy Python backend.
 
 ## Dependency Management
 
-Frontend dependencies are intentionally conservative. Direct frontend
-dependencies in `frontend/package.json` are pinned to exact versions and
-installed with `npm ci` from `frontend/package-lock.json` for deterministic
-builds.
+Frontend dependency updates are intentionally conservative:
 
-Dependabot is restricted for the frontend npm ecosystem: automatic version
-updates are limited to patch-level changes, while semver minor and major bumps
-are ignored. Major framework/tooling upgrades, including Tailwind CSS,
-TypeScript, React type packages, Next.js, and React, require manual review and a
-dedicated compatibility pass before they are merged.
+- Direct frontend dependencies are exact-version pinned in
+  `frontend/package.json`.
+- CI uses `npm ci` and `frontend/package-lock.json` for deterministic installs.
+- Dependabot npm updates are limited to patch-level changes.
+- Semver minor and major frontend updates require manual review.
 
-Security checks remain mandatory. Vulnerability findings should be resolved
-deliberately, either through a safe patch update or a manually reviewed upgrade
-when a patch is not available.
+Major framework or tooling upgrades, including Next.js, React, TypeScript,
+Tailwind CSS, and React type packages, should be handled in dedicated PRs with
+local build, type-check, and browser validation.
+
+Security findings remain mandatory. Fix them through safe patch updates when
+available, or through a manually reviewed upgrade when no patch path exists.
+
+## For Recruiters
+
+DataGuardian is intentionally small in product scope and serious in engineering
+scope. It is designed to show production-level thinking without pretending to be
+a finished enterprise platform.
+
+What to look for:
+
+- Architecture decisions: the backend was consolidated to Go for a clearer
+  runtime model, simpler deployment path, and stronger typed core.
+- Migration discipline: the legacy Python backend is isolated from Docker,
+  scripts, and CI so there is one active source of truth.
+- Security posture: password hashing, JWT validation, HttpOnly cookies,
+  production config guards, rate limiting, security headers, dependency audit,
+  secret scanning, and runtime exposure checks are part of the default workflow.
+- Testing strategy: Go unit tests cover core auth behavior, CI verifies the
+  architecture contract, frontend builds are deterministic, and browser E2E is
+  available without making Python mandatory for normal operation.
+- Operational clarity: scripts are explicit, Docker is the default runtime path,
+  generated artifacts are ignored, and README commands match actual behavior.
+
+The result is a project that can be cloned, started, inspected, and extended by
+another engineer without relying on hidden setup steps.
 
 ## Project Structure
 
 ```text
 backend-go/              Active Go backend
-backend-legacy-python/   Reference-only legacy backend
 frontend/                Next.js application
-scripts/                 Local setup, diagnostics, startup, build helpers
-security/                Security check and runtime audit scripts
-tests/                   Architecture and Playwright E2E tests
+tests/                   Architecture and optional Playwright E2E tests
+scripts/                 Install, startup, diagnostics, and build helpers
+security/                Dependency, secret, and runtime security checks
 .github/workflows/       CI pipeline
+.github/dependabot.yml   Dependency automation policy
 docker-compose.yml       Local runtime stack
-start.sh                 Main orchestrator
-run-tests.sh             Local non-E2E test bundle
+start.sh                 Main manual/automated orchestrator
+run-tests.sh             Local validation bundle
 ```
-
-## Versioning Readiness
-
-Stabilized for this version:
-
-- Go-only backend runtime.
-- Docker Compose starts only `db`, `backend-go`, and `frontend`.
-- Deterministic startup scripts.
-- No Python backend execution in active automation.
-- Dev/test bootstrap user guarded by environment.
-- Go tests, architecture contract test, frontend build, E2E flow, and security scripts.
-- `.env`, `.venv`, build outputs, caches, logs, local databases, and dependency folders ignored by Git.
-
-Intentionally not implemented yet:
-
-- Multi-tenant isolation.
-- RBAC.
-- Audit trail.
-- Enterprise billing.
-- Cloud infrastructure.
-- Production deployment automation.
-
-## Roadmap
-
-Next phases:
-
-- Rebuild the database audit engine in Go.
-- Add tenant isolation.
-- Add RBAC.
-- Add immutable audit trail events.
-- Add enterprise SaaS packaging and deployment guidance.
-- Add deeper security testing and production observability.
 
 ## Troubleshooting
 
@@ -315,7 +347,8 @@ Port conflict:
 ./scripts/doctor.sh
 ```
 
-If a non-DataGuardian process owns port `3000` or `8000`, stop it manually and rerun startup. The scripts do not kill arbitrary processes.
+If a non-DataGuardian process owns port `3000`, `8000`, or `5434`, stop it
+manually and rerun startup. The scripts do not kill unrelated processes.
 
 Docker not running:
 
@@ -324,29 +357,16 @@ docker compose config --services
 docker compose up -d db backend-go frontend
 ```
 
-If Docker reports a daemon error, start Docker Desktop or the Docker service first.
-
-Database startup issues:
-
-- Confirm `docker compose ps` shows `dataguardian_db`.
-- Confirm local PostgreSQL is mapped to port `5434`.
-- Confirm the backend uses `db:5432` inside Docker Compose.
-
 Frontend cannot reach backend:
 
 - Confirm `curl http://localhost:8000/health` returns `{"status":"ok"}`.
 - Confirm `NEXT_PUBLIC_API_URL` is `http://localhost:8000` for local Docker use.
 - Restart with `./scripts/up.sh`.
 
-Missing test tooling:
+Missing pytest:
 
-```bash
-./scripts/install.sh
+```text
+[WARN] pytest not found. Skipping E2E tests.
 ```
 
-Then rerun:
-
-```bash
-./run-tests.sh
-./start.sh auto
-```
+This is expected unless you are actively running browser E2E tests.

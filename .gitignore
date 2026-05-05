@@ -1,95 +1,116 @@
-# =========================
-# OS / SYSTEM
-# =========================
+# DataGuardian repository hygiene
+#
+# Keep source, lockfiles, scripts, tests, and documentation tracked.
+# Keep local dependencies, generated builds, secrets, caches, and binary
+# artifacts out of Git.
+
+# OS and filesystem metadata
 .DS_Store
 Thumbs.db
+Desktop.ini
 
-# =========================
-# ENV / SECRETS
-# =========================
+# Secrets and local environment
 .env
 .env.*
+!.env.example
 *.pem
 *.key
+*.crt
+*.p12
+*.pfx
+*.jks
+*.keystore
 
-# =========================
-# PYTHON (E2E optional only)
-# =========================
+# Logs and runtime scratch files
+.logs/
+logs/
+*.log
+*.pid
+*.seed
+*.tmp
+tmp/
+temp/
+
+# Python: optional E2E tooling only
+.venv/
+venv/
+env/
+ENV/
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
-.venv/
-venv/
-env/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
 
-# =========================
-# NODE / FRONTEND
-# =========================
+# Node, npm, and Next.js frontend
 node_modules/
+frontend/node_modules/
 .next/
-dist/
+frontend/.next/
+out/
+frontend/out/
+coverage/
+frontend/coverage/
+playwright-report/
+frontend/playwright-report/
+test-results/
+frontend/test-results/
 *.tsbuildinfo
-/playwright-report/
-/test-results/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# =========================
-# GO
-# =========================
+# Go build and test artifacts
 bin/
+build/
+dist/
 *.test
 *.out
+*.prof
+*.cover
+coverage.out
 vendor/
 
-# =========================
-# LOGS / RUNTIME
-# =========================
-.logs/
-*.log
-
-# =========================
-# DATABASE (LOCAL ONLY)
-# =========================
+# Local databases and persisted dev state
 *.db
 *.sqlite
 *.sqlite3
+postgres-data/
+pgdata/
 
-# =========================
-# BUILD / ARTIFACTS
-# =========================
-build/
-dist/
-
-# =========================
-# IDE / EDITOR
-# =========================
-.idea/
-.vscode/
-
-# =========================
-# SECURITY / BINARIES
-# =========================
+# Binary archives and generated distributables
+*.tar
 *.tar.gz
+*.tgz
 *.zip
+*.7z
+*.rar
+*.gz
 *.exe
 *.dll
+*.so
+*.dylib
+*.bin
 
-# =========================
-# LEGACY / DEPRECATED
-# =========================
+# IDE and editor state
+.idea/
+.vscode/
+*.swp
+*.swo
+*.bak
+*~
+
+# Legacy backend is reference-only and must not re-enter active runtime.
 backend-legacy-python/
 
-# =========================
-# AI / TOOLING
-# =========================
+# Local AI/tooling state
 .codex/
 codex/
-
-# =========================
-# MISC
-# =========================
-*.swp
-*.bak
+.agents/
