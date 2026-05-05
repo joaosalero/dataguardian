@@ -1,66 +1,95 @@
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Virtual Environment
-.venv/
-venv/
-env/
-
-
-# Environment variables
-.env
-.env.*
-
-# IDEs
-.idea/
-.vscode/
-
-# Logs
-.logs/
-*.log
-
-# Build / Distribution
-build/
-dist/
-!dist/
-!dist/**/
-!dist/**/README.md
-*.egg-info/
-
-# OS files
+# =========================
+# OS / SYSTEM
+# =========================
 .DS_Store
 Thumbs.db
 
-# Testing / Coverage
+# =========================
+# ENV / SECRETS
+# =========================
+.env
+.env.*
+*.pem
+*.key
+
+# =========================
+# PYTHON (E2E optional only)
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+.pytest_cache/
 .coverage
 htmlcov/
-.pytest_cache/
-*.tsbuildinfo
 
-# Database (local/testing)
+# =========================
+# NODE / FRONTEND
+# =========================
+node_modules/
+.next/
+dist/
+*.tsbuildinfo
+/playwright-report/
+/test-results/
+
+# =========================
+# GO
+# =========================
+bin/
+*.test
+*.out
+vendor/
+
+# =========================
+# LOGS / RUNTIME
+# =========================
+.logs/
+*.log
+
+# =========================
+# DATABASE (LOCAL ONLY)
+# =========================
 *.db
 *.sqlite
 *.sqlite3
 
-# Codex / AI tools
-codex/
-.codex
+# =========================
+# BUILD / ARTIFACTS
+# =========================
+build/
+dist/
 
-# Misc
+# =========================
+# IDE / EDITOR
+# =========================
+.idea/
+.vscode/
+
+# =========================
+# SECURITY / BINARIES
+# =========================
+*.tar.gz
+*.zip
+*.exe
+*.dll
+
+# =========================
+# LEGACY / DEPRECATED
+# =========================
+backend-legacy-python/
+
+# =========================
+# AI / TOOLING
+# =========================
+.codex/
+codex/
+
+# =========================
+# MISC
+# =========================
 *.swp
 *.bak
-
-# playwright
-/playwright-report/
-/test-results/
-backend-legacy-python/
-dist/
-node_modules/
-.pytest_cache/*.tar.gz
-go*.tar.gz
-.logs/
-dist/
-.env
