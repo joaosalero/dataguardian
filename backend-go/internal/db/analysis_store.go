@@ -448,7 +448,86 @@ func (s *Store) RiskScoreByAnalysisID(ctx context.Context, analysisID int64) (Ri
 	return score, nil
 }
 
-// SaveCleanFile is reserved for a later sanitization slice.
+// SaveCleanFile stores the sanitized output metadata for one file analysis.
 func (s *Store) SaveCleanFile(ctx context.Context, cleanFile CleanFile) (CleanFile, error) {
-	return CleanFile{}, ErrNotImplemented
+	removedKeys, err := json.Marshal(cleanFile.RemovedMetadataKeys)
+	if err != nil {
+		return CleanFile{}, err
+	}
+
+	var created CleanFile
+	var rawRemovedKeys []byte
+	err = s.db.QueryRowContext(
+		ctx,
+		`INSERT INTO clean_files
+		 (analysis_id, original_file_id, stored_reference, filename, mime_type, size_bytes,
+		  checksum_sha256, cleaning_status, removed_metadata_keys)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+		 RETURNING id, analysis_id, original_file_id, stored_reference, filename, mime_type,
+		  size_bytes, checksum_sha256, cleaning_status, removed_metadata_keys, created_at`,
+		cleanFile.AnalysisID,
+		cleanFile.OriginalFileID,
+		cleanFile.StoredReference,
+		cleanFile.Filename,
+		cleanFile.MimeType,
+		cleanFile.SizeBytes,
+		cleanFile.ChecksumSHA256,
+		cleanFile.CleaningStatus,
+		string(removedKeys),
+	).Scan(
+		&created.ID,
+		&created.AnalysisID,
+		&created.OriginalFileID,
+		&created.StoredReference,
+		&created.Filename,
+		&created.MimeType,
+		&created.SizeBytes,
+		&created.ChecksumSHA256,
+		&created.CleaningStatus,
+		&rawRemovedKeys,
+		&created.CreatedAt,
+	)
+	if err != nil {
+		return CleanFile{}, err
+	}
+	if err := json.Unmarshal(rawRemovedKeys, &created.RemovedMetadataKeys); err != nil {
+		return CleanFile{}, err
+	}
+	return created, nil
+}
+
+// CleanFileByAnalysisID loads the sanitized output metadata for one file analysis.
+func (s *Store) CleanFileByAnalysisID(ctx context.Context, analysisID int64) (CleanFile, error) {
+	var cleanFile CleanFile
+	var rawRemovedKeys []byte
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT id, analysis_id, original_file_id, stored_reference, filename, mime_type,
+		  size_bytes, checksum_sha256, cleaning_status, removed_metadata_keys, created_at
+		 FROM clean_files
+		 WHERE analysis_id = $1`,
+		analysisID,
+	).Scan(
+		&cleanFile.ID,
+		&cleanFile.AnalysisID,
+		&cleanFile.OriginalFileID,
+		&cleanFile.StoredReference,
+		&cleanFile.Filename,
+		&cleanFile.MimeType,
+		&cleanFile.SizeBytes,
+		&cleanFile.ChecksumSHA256,
+		&cleanFile.CleaningStatus,
+		&rawRemovedKeys,
+		&cleanFile.CreatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return CleanFile{}, ErrNotFound
+	}
+	if err != nil {
+		return CleanFile{}, err
+	}
+	if err := json.Unmarshal(rawRemovedKeys, &cleanFile.RemovedMetadataKeys); err != nil {
+		return CleanFile{}, err
+	}
+	return cleanFile, nil
 }

@@ -286,14 +286,33 @@ Current limits and behavior:
 - The backend computes a SHA-256 checksum for every accepted file.
 - Minimal analysis scans raw bytes for PDF JavaScript/OpenAction markers,
   base64-like long strings, and `eval(` string patterns.
-- Metadata is limited to filename, MIME type, size, and checksum.
-- Clean file generation is not implemented yet, so `cleanFile` is `null`.
+- Metadata includes filename, MIME type, size, checksum, and lightweight
+  file-format metadata.
+- PDF metadata extraction currently checks producer, author, creation date, and
+  whether embedded-object markers are present.
+- JPEG metadata extraction currently checks EXIF camera model, datetime, and
+  GPS when present.
+- Metadata entries are classified by category and sensitivity. For example,
+  GPS is `SENSITIVE`, author/tool fields are `POTENTIALLY_SENSITIVE`, and file
+  size is `NON_SENSITIVE`.
+- Metadata findings currently include `METADATA_GPS_EXPOSED`,
+  `METADATA_AUTHOR_PRESENT`, and `METADATA_SUSPICIOUS_PRESENT`.
+- Clean file generation creates a sanitized file record for file analyses.
+  JPEG sanitization removes EXIF APP1 segments. PDF sanitization removes a
+  small set of non-essential literal metadata fields such as author, producer,
+  and creation date.
+- `cleanFile` is returned for file analyses when sanitization is recorded.
+  URL analyses still return `cleanFile: null`.
 
 Security boundary:
 
 - Uploaded files are treated as untrusted binary data.
 - Files are not executed, rendered, opened in viewers, or processed by PDF
   engines.
+- Sanitization is binary-only and removes metadata; it does not execute content
+  or add replacement document content.
+- The current clean file feature is lightweight metadata removal, not full
+  document sanitization or malware removal.
 - The current implementation is structured for future sandboxing, but does not
   provide a sandbox yet.
 

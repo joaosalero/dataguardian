@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,8 @@ import (
 	"dataguardian/backend-go/internal/config"
 	"dataguardian/backend-go/internal/db"
 )
+
+var errTestStorage = errors.New("test storage failure")
 
 func TestAnalysisRoutesExistAndRequireAuth(t *testing.T) {
 	router := NewRouter(config.Settings{AuthCookieName: "dataguardian_session"}, nil)
@@ -48,7 +51,7 @@ func TestCreateFileAnalysisUploadSuccess(t *testing.T) {
 	body, contentType := multipartAnalysisBody(t, map[string]string{
 		"projectId": "7",
 		"inputType": string(db.InputTypeFile),
-	}, "sample.pdf", []byte("%PDF-1.7\n/OpenAction << /JS (JavaScript) >>"))
+	}, "sample.pdf", []byte("%PDF-1.7\n<< /Author (Alice) /OpenAction << /JS (JavaScript) >> >>"))
 	req := httptest.NewRequest(http.MethodPost, "/analyses", body)
 	req.Header.Set("Content-Type", contentType)
 	req = req.WithContext(withUserID(req.Context(), 42))
@@ -72,14 +75,65 @@ func TestCreateFileAnalysisUploadSuccess(t *testing.T) {
 	if len(response.Findings) == 0 {
 		t.Fatal("expected findings in response")
 	}
-	if response.CleanFile != nil {
-		t.Fatal("cleanFile must be null for the first file-analysis slice")
+	if response.CleanFile == nil || response.CleanFile.CleaningStatus != db.CleaningStatusCompleted {
+		t.Fatalf("expected completed cleanFile, got %#v", response.CleanFile)
+	}
+	if len(response.Metadata.Entries) == 0 {
+		t.Fatal("expected metadata entries in response")
+	}
+	if !metadataEntryExists(response.Metadata.Entries, "author") {
+		t.Fatalf("expected extracted author metadata, got %#v", response.Metadata.Entries)
 	}
 	if store.createdFile.StoredReference == "" {
 		t.Fatal("expected stored file reference")
 	}
 	if !strings.HasPrefix(filepath.Clean(store.createdFile.StoredReference), filepath.Clean(srv.cfg.StorageDir)) {
 		t.Fatalf("stored file escaped storage dir: %s", store.createdFile.StoredReference)
+	}
+}
+
+func metadataEntryExists(entries []db.MetadataEntry, key string) bool {
+	for _, entry := range entries {
+		if entry.Key == key {
+			return true
+		}
+	}
+	return false
+}
+
+func TestCreateFileAnalysisCleanFileFailureIsRecorded(t *testing.T) {
+	store := newFakeAnalysisStore()
+	srv := &server{
+		cfg:   config.Settings{StorageDir: t.TempDir()},
+		store: store,
+	}
+	originalWriteStoredFile := writeStoredFile
+	writeCount := 0
+	writeStoredFile = func(path string, content []byte) error {
+		writeCount++
+		if writeCount == 2 {
+			return errTestStorage
+		}
+		return originalWriteStoredFile(path, content)
+	}
+	defer func() { writeStoredFile = originalWriteStoredFile }()
+
+	body, contentType := multipartAnalysisBody(t, map[string]string{
+		"projectId": "7",
+		"inputType": string(db.InputTypeFile),
+	}, "sample.pdf", []byte("%PDF-1.7\n<< /Author (Alice) >>"))
+	req := httptest.NewRequest(http.MethodPost, "/analyses", body)
+	req.Header.Set("Content-Type", contentType)
+	req = req.WithContext(withUserID(req.Context(), 42))
+	rec := httptest.NewRecorder()
+
+	srv.createAnalysis(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("createAnalysis returned %d with body %s", rec.Code, rec.Body.String())
+	}
+	if store.cleanFile.CleaningStatus != db.CleaningStatusFailed {
+		t.Fatalf("expected failed clean file recorded, got %#v", store.cleanFile)
 	}
 }
 
@@ -372,6 +426,7 @@ type fakeAnalysisStore struct {
 	metadata    db.Metadata
 	findings    []db.Finding
 	riskScore   db.RiskScore
+	cleanFile   db.CleanFile
 }
 
 func newFakeAnalysisStore() *fakeAnalysisStore {
@@ -496,7 +551,17 @@ func (f *fakeAnalysisStore) RiskScoreByAnalysisID(ctx context.Context, analysisI
 }
 
 func (f *fakeAnalysisStore) SaveCleanFile(ctx context.Context, cleanFile db.CleanFile) (db.CleanFile, error) {
-	return db.CleanFile{}, db.ErrNotImplemented
+	cleanFile.ID = 104
+	cleanFile.CreatedAt = f.analysis.StartedAt
+	f.cleanFile = cleanFile
+	return cleanFile, nil
+}
+
+func (f *fakeAnalysisStore) CleanFileByAnalysisID(ctx context.Context, analysisID int64) (db.CleanFile, error) {
+	if f.cleanFile.ID == 0 {
+		return db.CleanFile{}, db.ErrNotFound
+	}
+	return f.cleanFile, nil
 }
 
 func TestAnalysisDTOJSONRoundTrip(t *testing.T) {

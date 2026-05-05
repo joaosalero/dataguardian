@@ -33,4 +33,5 @@ type dataStore interface {
 	SaveRiskScore(ctx context.Context, score db.RiskScore) (db.RiskScore, error)
 	RiskScoreByAnalysisID(ctx context.Context, analysisID int64) (db.RiskScore, error)
 	SaveCleanFile(ctx context.Context, cleanFile db.CleanFile) (db.CleanFile, error)
+	CleanFileByAnalysisID(ctx context.Context, analysisID int64) (db.CleanFile, error)
 }

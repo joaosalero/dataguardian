@@ -11,9 +11,10 @@ var base64Pattern = regexp.MustCompile(`[A-Za-z0-9+/]{80,}={0,2}`)
 
 // FileResult contains deterministic findings and risk generated from raw file bytes.
 type FileResult struct {
-	Findings  []db.Finding
-	RiskScore db.RiskScore
-	Summary   string
+	MetadataEntries []db.MetadataEntry
+	Findings        []db.Finding
+	RiskScore       db.RiskScore
+	Summary         string
 }
 
 // AnalyzeFile inspects bytes only; it never executes, renders, or interprets active content.
@@ -23,6 +24,8 @@ func AnalyzeFile(content []byte, mimeType string) FileResult {
 	if mimeType == "application/pdf" {
 		findings = append(findings, pdfFindings(content)...)
 	}
+	metadataEntries := ExtractFileMetadata(content, mimeType)
+	findings = append(findings, metadataFindings(metadataEntries)...)
 	findings = append(findings, genericFindings(content)...)
 
 	score := ScoreFindings(findings)
@@ -32,9 +35,10 @@ func AnalyzeFile(content []byte, mimeType string) FileResult {
 	}
 
 	return FileResult{
-		Findings:  findings,
-		RiskScore: score,
-		Summary:   summary,
+		MetadataEntries: metadataEntries,
+		Findings:        findings,
+		RiskScore:       score,
+		Summary:         summary,
 	}
 }
 

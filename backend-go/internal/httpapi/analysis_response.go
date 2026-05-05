@@ -2,16 +2,18 @@ package httpapi
 
 import "dataguardian/backend-go/internal/db"
 
-func minimalFileMetadata(analysisID int64, file db.File) db.Metadata {
+func fileMetadata(analysisID int64, file db.File, extracted []db.MetadataEntry) db.Metadata {
+	entries := []db.MetadataEntry{
+		metadataEntry("filename", file.OriginalFilename),
+		metadataEntry("mime_type", file.MimeType),
+		metadataEntry("size_bytes", file.SizeBytes),
+		metadataEntry("checksum_sha256", file.ChecksumSHA256),
+	}
+	entries = append(entries, extracted...)
 	return db.Metadata{
 		AnalysisID: analysisID,
 		SourceType: db.MetadataSourceTypeFile,
-		Entries: []db.MetadataEntry{
-			metadataEntry("filename", file.OriginalFilename),
-			metadataEntry("mime_type", file.MimeType),
-			metadataEntry("size_bytes", file.SizeBytes),
-			metadataEntry("checksum_sha256", file.ChecksumSHA256),
-		},
+		Entries:    entries,
 	}
 }
 
@@ -32,8 +34,9 @@ func buildFileAnalysisResponse(
 	metadata db.Metadata,
 	findings []db.Finding,
 	riskScore db.RiskScore,
+	cleanFile *db.CleanFile,
 ) AnalysisResponse {
-	return AnalysisResponse{
+	response := AnalysisResponse{
 		AnalysisID:    analysis.ID,
 		ProjectID:     analysis.ProjectID,
 		InputType:     analysis.InputType,
@@ -53,8 +56,19 @@ func buildFileAnalysisResponse(
 		Findings:  analysisFindings(findings),
 		Metadata:  analysisMetadata(metadata),
 		RiskScore: analysisRiskScore(riskScore),
-		CleanFile: nil,
 	}
+	if cleanFile != nil {
+		response.CleanFile = &AnalysisCleanFileReference{
+			ID:                  cleanFile.ID,
+			Filename:            cleanFile.Filename,
+			MimeType:            cleanFile.MimeType,
+			SizeBytes:           cleanFile.SizeBytes,
+			ChecksumSHA256:      cleanFile.ChecksumSHA256,
+			CleaningStatus:      cleanFile.CleaningStatus,
+			RemovedMetadataKeys: cleanFile.RemovedMetadataKeys,
+		}
+	}
+	return response
 }
 
 func buildURLAnalysisResponse(

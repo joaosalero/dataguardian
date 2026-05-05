@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -194,12 +195,17 @@ func (s *server) createFileAnalysis(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := analysis.AnalyzeFile(content, mimeType)
-	metadata, err := s.store.SaveMetadata(r.Context(), minimalFileMetadata(root.ID, createdFile))
+	metadata, err := s.store.SaveMetadata(r.Context(), fileMetadata(root.ID, createdFile, result.MetadataEntries))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
 		return
 	}
 	if err := s.store.SaveFindings(r.Context(), root.ID, result.Findings); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return
+	}
+	cleanFile, err := s.createCleanFile(r.Context(), createdFile, originalFilename, extension, content, mimeType)
+	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
 		return
 	}
@@ -220,7 +226,7 @@ func (s *server) createFileAnalysis(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, buildFileAnalysisResponse(completed, createdFile, metadata, findings, riskScore))
+	writeJSON(w, http.StatusCreated, buildFileAnalysisResponse(completed, createdFile, metadata, findings, riskScore, cleanFile))
 }
 
 func (s *server) getAnalysis(w http.ResponseWriter, r *http.Request) {
@@ -246,11 +252,11 @@ func (s *server) getAnalysis(w http.ResponseWriter, r *http.Request) {
 	}
 	switch root.InputType {
 	case db.InputTypeFile:
-		file, metadata, findings, riskScore, ok := s.loadFileAnalysisParts(w, r, root.ID)
+		file, metadata, findings, riskScore, cleanFile, ok := s.loadFileAnalysisParts(w, r, root.ID)
 		if !ok {
 			return
 		}
-		writeJSON(w, http.StatusOK, buildFileAnalysisResponse(root, file, metadata, findings, riskScore))
+		writeJSON(w, http.StatusOK, buildFileAnalysisResponse(root, file, metadata, findings, riskScore, cleanFile))
 	case db.InputTypeURL:
 		target, metadata, findings, riskScore, ok := s.loadURLAnalysisParts(w, r, root.ID)
 		if !ok {
@@ -262,28 +268,36 @@ func (s *server) getAnalysis(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *server) loadFileAnalysisParts(w http.ResponseWriter, r *http.Request, analysisID int64) (db.File, db.Metadata, []db.Finding, db.RiskScore, bool) {
+func (s *server) loadFileAnalysisParts(w http.ResponseWriter, r *http.Request, analysisID int64) (db.File, db.Metadata, []db.Finding, db.RiskScore, *db.CleanFile, bool) {
 	file, err := s.store.FileByAnalysisID(r.Context(), analysisID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
-		return db.File{}, db.Metadata{}, nil, db.RiskScore{}, false
+		return db.File{}, db.Metadata{}, nil, db.RiskScore{}, nil, false
 	}
 	metadata, err := s.store.MetadataByAnalysisID(r.Context(), analysisID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
-		return db.File{}, db.Metadata{}, nil, db.RiskScore{}, false
+		return db.File{}, db.Metadata{}, nil, db.RiskScore{}, nil, false
 	}
 	findings, err := s.store.FindingsByAnalysisID(r.Context(), analysisID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
-		return db.File{}, db.Metadata{}, nil, db.RiskScore{}, false
+		return db.File{}, db.Metadata{}, nil, db.RiskScore{}, nil, false
 	}
 	riskScore, err := s.store.RiskScoreByAnalysisID(r.Context(), analysisID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
-		return db.File{}, db.Metadata{}, nil, db.RiskScore{}, false
+		return db.File{}, db.Metadata{}, nil, db.RiskScore{}, nil, false
 	}
-	return file, metadata, findings, riskScore, true
+	cleanFile, err := s.store.CleanFileByAnalysisID(r.Context(), analysisID)
+	if errors.Is(err, db.ErrNotFound) {
+		return file, metadata, findings, riskScore, nil, true
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return db.File{}, db.Metadata{}, nil, db.RiskScore{}, nil, false
+	}
+	return file, metadata, findings, riskScore, &cleanFile, true
 }
 
 func (s *server) loadURLAnalysisParts(w http.ResponseWriter, r *http.Request, analysisID int64) (db.URLTarget, db.Metadata, []db.Finding, db.RiskScore, bool) {
@@ -379,6 +393,61 @@ func storeAnalysisFile(storageDir string, checksum string, extension string, con
 		return "", err
 	}
 	return path, nil
+}
+
+func (s *server) createCleanFile(ctx context.Context, originalFile db.File, originalFilename string, extension string, content []byte, mimeType string) (*db.CleanFile, error) {
+	cleanResult, err := analysis.SanitizeFile(content, mimeType)
+	if err != nil {
+		return nil, err
+	}
+	checksum := sha256.Sum256(cleanResult.Content)
+	checksumHex := hex.EncodeToString(checksum[:])
+	storedReference, err := storeAnalysisFile(s.cfg.StorageDir, checksumHex, extension, cleanResult.Content)
+	if err != nil {
+		return saveFailedCleanFile(ctx, s.store, originalFile, originalFilename, mimeType, cleanResult.RemovedMetadataKeys)
+	}
+	cleanFile, err := s.store.SaveCleanFile(ctx, db.CleanFile{
+		AnalysisID:          originalFile.AnalysisID,
+		OriginalFileID:      originalFile.ID,
+		StoredReference:     storedReference,
+		Filename:            cleanFilename(originalFilename),
+		MimeType:            mimeType,
+		SizeBytes:           int64(len(cleanResult.Content)),
+		ChecksumSHA256:      checksumHex,
+		CleaningStatus:      db.CleaningStatusCompleted,
+		RemovedMetadataKeys: cleanResult.RemovedMetadataKeys,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &cleanFile, nil
+}
+
+func saveFailedCleanFile(ctx context.Context, store dataStore, originalFile db.File, originalFilename string, mimeType string, removedKeys []string) (*db.CleanFile, error) {
+	cleanFile, err := store.SaveCleanFile(ctx, db.CleanFile{
+		AnalysisID:          originalFile.AnalysisID,
+		OriginalFileID:      originalFile.ID,
+		StoredReference:     "",
+		Filename:            cleanFilename(originalFilename),
+		MimeType:            mimeType,
+		SizeBytes:           0,
+		ChecksumSHA256:      "",
+		CleaningStatus:      db.CleaningStatusFailed,
+		RemovedMetadataKeys: removedKeys,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &cleanFile, nil
+}
+
+func cleanFilename(original string) string {
+	extension := filepath.Ext(original)
+	base := strings.TrimSuffix(original, extension)
+	if strings.TrimSpace(base) == "" {
+		base = "clean-file"
+	}
+	return base + "-clean" + extension
 }
 
 var ensureStorageDir = func(storageDir string) error {
