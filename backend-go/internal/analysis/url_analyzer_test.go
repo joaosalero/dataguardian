@@ -65,11 +65,17 @@ func TestAnalyzeURLDetectsFindingsAndResponseFields(t *testing.T) {
 }
 
 func TestAnalyzeURLBlocksSSRFHosts(t *testing.T) {
-	if _, err := AnalyzeURL(context.Background(), "http://127.0.0.1/admin"); !errors.Is(err, ErrUnsafeURL) {
-		t.Fatalf("expected unsafe URL error, got %v", err)
-	}
-	if _, err := AnalyzeURL(context.Background(), "http://10.0.0.2/admin"); !errors.Is(err, ErrUnsafeURL) {
-		t.Fatalf("expected unsafe URL error, got %v", err)
+	for _, rawURL := range []string{
+		"http://127.0.0.1/admin",
+		"http://[::1]/admin",
+		"http://10.0.0.2/admin",
+		"http://172.16.0.2/admin",
+		"http://172.31.0.2/admin",
+		"http://192.168.1.2/admin",
+	} {
+		if _, err := AnalyzeURL(context.Background(), rawURL); !errors.Is(err, ErrUnsafeURL) {
+			t.Fatalf("expected unsafe URL error for %s, got %v", rawURL, err)
+		}
 	}
 }
 

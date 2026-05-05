@@ -63,7 +63,8 @@ def run_go_auth_flow(headless: bool) -> None:
             page.get_by_label("Password").fill(test_password)
             page.get_by_role("button", name="Sign in").click()
             page.wait_for_url("**/dashboard", timeout=10_000)
-            expect(page.get_by_role("heading", name="Dashboard")).to_be_visible()
+            expect(page.get_by_role("heading", name="DataGuardian")).to_be_visible()
+            expect(page.get_by_role("heading", name="Analysis history")).to_be_visible()
             expect(page.get_by_text(f"Signed in as {test_email}.")).to_be_visible(
                 timeout=10_000
             )

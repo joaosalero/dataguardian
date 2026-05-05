@@ -138,6 +138,38 @@ func TestCreateFileAnalysisCleanFileFailureIsRecorded(t *testing.T) {
 	}
 }
 
+func TestCreateFileAnalysisRejectsInvalidProjectID(t *testing.T) {
+	srv := &server{
+		cfg:   config.Settings{StorageDir: t.TempDir()},
+		store: newFakeAnalysisStore(),
+	}
+	body, contentType := multipartAnalysisBody(t, map[string]string{
+		"projectId": "invalid",
+		"inputType": string(db.InputTypeFile),
+	}, "sample.pdf", []byte("%PDF-1.7"))
+	req := httptest.NewRequest(http.MethodPost, "/analyses", body)
+	req.Header.Set("Content-Type", contentType)
+	req = req.WithContext(withUserID(req.Context(), 42))
+	rec := httptest.NewRecorder()
+
+	srv.createAnalysis(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("createAnalysis returned %d, expected %d", rec.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(rec.Body.String(), "Project id is required") {
+		t.Fatalf("unexpected response body: %s", rec.Body.String())
+	}
+}
+
+func TestReadLimitedFileRejectsOversizedFile(t *testing.T) {
+	content := strings.NewReader(strings.Repeat("A", maxAnalysisFileSize+1))
+
+	if _, err := readLimitedFile(content); err == nil || !strings.Contains(err.Error(), "10MB") {
+		t.Fatalf("expected oversized file error, got %v", err)
+	}
+}
+
 func TestCreateFileAnalysisRejectsInvalidFileType(t *testing.T) {
 	srv := &server{
 		cfg:   config.Settings{StorageDir: t.TempDir()},
@@ -267,6 +299,28 @@ func TestCreateURLAnalysisRejectsInvalidURL(t *testing.T) {
 	}
 }
 
+func TestCreateURLAnalysisRejectsBlockedURL(t *testing.T) {
+	srv := &server{store: newFakeAnalysisStore()}
+	originalAnalyzeURL := analyzeURL
+	defer func() { analyzeURL = originalAnalyzeURL }()
+	analyzeURL = func(ctx context.Context, raw string) (analysis.URLResult, error) {
+		return analysis.URLResult{}, analysis.ErrUnsafeURL
+	}
+	req := httptest.NewRequest(http.MethodPost, "/analyses", strings.NewReader(`{"projectId":7,"inputType":"URL","url":{"originalUrl":"http://127.0.0.1/admin"}}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(withUserID(req.Context(), 42))
+	rec := httptest.NewRecorder()
+
+	srv.createAnalysis(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("createAnalysis returned %d, expected %d", rec.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(rec.Body.String(), "Invalid or unsafe URL") {
+		t.Fatalf("unexpected response body: %s", rec.Body.String())
+	}
+}
+
 func TestListAnalysesReturnsUserScopedHistory(t *testing.T) {
 	store := newFakeAnalysisStore()
 	first := time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC)
@@ -308,6 +362,22 @@ func TestListAnalysesReturnsUserScopedHistory(t *testing.T) {
 	}
 	if payload.Analyses[0].AnalysisID != 100 || payload.Analyses[0].RiskLevel != db.RiskLevelHigh {
 		t.Fatalf("expected newest high-risk URL first, got %#v", payload.Analyses[0])
+	}
+}
+
+func TestGetAnalysisReturnsNotFoundForUnauthorizedAnalysis(t *testing.T) {
+	store := newFakeAnalysisStore()
+	store.getAnalysisErr = db.ErrNotFound
+	srv := &server{store: store}
+	req := httptest.NewRequest(http.MethodGet, "/analyses/99", nil)
+	req.SetPathValue("id", "99")
+	req = req.WithContext(withUserID(req.Context(), 42))
+	rec := httptest.NewRecorder()
+
+	srv.getAnalysis(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("getAnalysis returned %d, expected %d", rec.Code, http.StatusNotFound)
 	}
 }
 
@@ -475,6 +545,7 @@ type fakeAnalysisStore struct {
 	cleanFile         db.CleanFile
 	projects          []db.Project
 	analysesByProject map[int64][]db.Analysis
+	getAnalysisErr    error
 }
 
 func newFakeAnalysisStore() *fakeAnalysisStore {
@@ -538,6 +609,9 @@ func (f *fakeAnalysisStore) CompleteAnalysis(ctx context.Context, analysisID int
 }
 
 func (f *fakeAnalysisStore) GetAnalysisByID(ctx context.Context, userID int64, analysisID int64) (db.Analysis, error) {
+	if f.getAnalysisErr != nil {
+		return db.Analysis{}, f.getAnalysisErr
+	}
 	return f.analysis, nil
 }
 
