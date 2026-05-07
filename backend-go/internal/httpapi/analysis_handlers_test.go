@@ -109,81 +109,89 @@ func metadataEntryExists(entries []db.MetadataEntry, key string) bool {
 }
 
 func TestDownloadOriginalFileSuccess(t *testing.T) {
-	storageDir := t.TempDir()
-	content := []byte("%PDF-1.7\noriginal")
-	path := filepath.Join(storageDir, "original.pdf")
-	if err := os.WriteFile(path, content, 0o600); err != nil {
-		t.Fatalf("WriteFile returned error: %v", err)
-	}
-	store := newFakeAnalysisStore()
-	store.analysis = db.Analysis{ID: 99, ProjectID: 7, InputType: db.InputTypeFile, Status: db.AnalysisStatusCompleted}
-	store.createdFile = db.File{
-		ID:               100,
-		AnalysisID:       99,
-		OriginalFilename: "sample.pdf",
-		StoredReference:  path,
-		MimeType:         "application/pdf",
-		SizeBytes:        int64(len(content)),
-	}
-	srv := &server{
-		cfg:   config.Settings{StorageDir: storageDir},
-		store: store,
-	}
-	req := httptest.NewRequest(http.MethodGet, "/analyses/99/file", nil)
-	req.SetPathValue("id", "99")
-	req = req.WithContext(withUserID(req.Context(), 42))
-	rec := httptest.NewRecorder()
+	for _, inputType := range []db.InputType{db.InputTypeFile, db.InputTypeURL} {
+		t.Run(string(inputType), func(t *testing.T) {
+			storageDir := t.TempDir()
+			content := []byte("%PDF-1.7\noriginal")
+			path := filepath.Join(storageDir, "original.pdf")
+			if err := os.WriteFile(path, content, 0o600); err != nil {
+				t.Fatalf("WriteFile returned error: %v", err)
+			}
+			store := newFakeAnalysisStore()
+			store.analysis = db.Analysis{ID: 99, ProjectID: 7, InputType: inputType, Status: db.AnalysisStatusCompleted}
+			store.createdFile = db.File{
+				ID:               100,
+				AnalysisID:       99,
+				OriginalFilename: "sample.pdf",
+				StoredReference:  path,
+				MimeType:         "application/pdf",
+				SizeBytes:        int64(len(content)),
+			}
+			srv := &server{
+				cfg:   config.Settings{StorageDir: storageDir},
+				store: store,
+			}
+			req := httptest.NewRequest(http.MethodGet, "/analyses/99/file", nil)
+			req.SetPathValue("id", "99")
+			req = req.WithContext(withUserID(req.Context(), 42))
+			rec := httptest.NewRecorder()
 
-	srv.downloadOriginalFile(rec, req)
+			srv.downloadOriginalFile(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("downloadOriginalFile returned %d with body %s", rec.Code, rec.Body.String())
-	}
-	if rec.Body.String() != string(content) {
-		t.Fatalf("unexpected download body: %q", rec.Body.String())
-	}
-	if disposition := rec.Header().Get("Content-Disposition"); !strings.Contains(disposition, "attachment") || !strings.Contains(disposition, "sample.pdf") {
-		t.Fatalf("expected attachment disposition, got %q", disposition)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("downloadOriginalFile returned %d with body %s", rec.Code, rec.Body.String())
+			}
+			if rec.Body.String() != string(content) {
+				t.Fatalf("unexpected download body: %q", rec.Body.String())
+			}
+			if disposition := rec.Header().Get("Content-Disposition"); !strings.Contains(disposition, "attachment") || !strings.Contains(disposition, "sample.pdf") {
+				t.Fatalf("expected attachment disposition, got %q", disposition)
+			}
+		})
 	}
 }
 
 func TestDownloadCleanFileSuccess(t *testing.T) {
-	storageDir := t.TempDir()
-	content := []byte("%PDF-1.7\nclean")
-	path := filepath.Join(storageDir, "clean.pdf")
-	if err := os.WriteFile(path, content, 0o600); err != nil {
-		t.Fatalf("WriteFile returned error: %v", err)
-	}
-	store := newFakeAnalysisStore()
-	store.analysis = db.Analysis{ID: 99, ProjectID: 7, InputType: db.InputTypeFile, Status: db.AnalysisStatusCompleted}
-	store.cleanFile = db.CleanFile{
-		ID:              104,
-		AnalysisID:      99,
-		StoredReference: path,
-		Filename:        "sample-clean.pdf",
-		MimeType:        "application/pdf",
-		SizeBytes:       int64(len(content)),
-		CleaningStatus:  db.CleaningStatusCompleted,
-	}
-	srv := &server{
-		cfg:   config.Settings{StorageDir: storageDir},
-		store: store,
-	}
-	req := httptest.NewRequest(http.MethodGet, "/analyses/99/clean-file", nil)
-	req.SetPathValue("id", "99")
-	req = req.WithContext(withUserID(req.Context(), 42))
-	rec := httptest.NewRecorder()
+	for _, inputType := range []db.InputType{db.InputTypeFile, db.InputTypeURL} {
+		t.Run(string(inputType), func(t *testing.T) {
+			storageDir := t.TempDir()
+			content := []byte("%PDF-1.7\nclean")
+			path := filepath.Join(storageDir, "clean.pdf")
+			if err := os.WriteFile(path, content, 0o600); err != nil {
+				t.Fatalf("WriteFile returned error: %v", err)
+			}
+			store := newFakeAnalysisStore()
+			store.analysis = db.Analysis{ID: 99, ProjectID: 7, InputType: inputType, Status: db.AnalysisStatusCompleted}
+			store.cleanFile = db.CleanFile{
+				ID:              104,
+				AnalysisID:      99,
+				StoredReference: path,
+				Filename:        "sample-clean.pdf",
+				MimeType:        "application/pdf",
+				SizeBytes:       int64(len(content)),
+				CleaningStatus:  db.CleaningStatusCompleted,
+			}
+			srv := &server{
+				cfg:   config.Settings{StorageDir: storageDir},
+				store: store,
+			}
+			req := httptest.NewRequest(http.MethodGet, "/analyses/99/clean-file", nil)
+			req.SetPathValue("id", "99")
+			req = req.WithContext(withUserID(req.Context(), 42))
+			rec := httptest.NewRecorder()
 
-	srv.downloadCleanFile(rec, req)
+			srv.downloadCleanFile(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("downloadCleanFile returned %d with body %s", rec.Code, rec.Body.String())
-	}
-	if rec.Body.String() != string(content) {
-		t.Fatalf("unexpected download body: %q", rec.Body.String())
-	}
-	if disposition := rec.Header().Get("Content-Disposition"); !strings.Contains(disposition, "attachment") || !strings.Contains(disposition, "sample-clean.pdf") {
-		t.Fatalf("expected attachment disposition, got %q", disposition)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("downloadCleanFile returned %d with body %s", rec.Code, rec.Body.String())
+			}
+			if rec.Body.String() != string(content) {
+				t.Fatalf("unexpected download body: %q", rec.Body.String())
+			}
+			if disposition := rec.Header().Get("Content-Disposition"); !strings.Contains(disposition, "attachment") || !strings.Contains(disposition, "sample-clean.pdf") {
+				t.Fatalf("expected attachment disposition, got %q", disposition)
+			}
+		})
 	}
 }
 
@@ -421,6 +429,98 @@ func TestCreateURLAnalysisSuccess(t *testing.T) {
 	}
 	if response.SafePreview == nil || !response.SafePreview.Available || response.SafePreview.Text != "Example preview" {
 		t.Fatalf("expected URL safe preview, got %#v", response.SafePreview)
+	}
+}
+
+func TestCreateURLAnalysisPersistsRemoteFileInspection(t *testing.T) {
+	store := newFakeAnalysisStore()
+	srv := &server{
+		cfg:   config.Settings{StorageDir: t.TempDir()},
+		store: store,
+	}
+	originalAnalyzeURL := analyzeURL
+	defer func() { analyzeURL = originalAnalyzeURL }()
+	analyzeURL = func(ctx context.Context, raw string) (analysis.URLResult, error) {
+		contentType := "application/pdf"
+		contentLength := int64(54)
+		statusCode := http.StatusOK
+		target := db.URLTarget{
+			OriginalURL:        raw,
+			FinalURL:           &raw,
+			UsesHTTPS:          true,
+			Host:               "example.com",
+			ContentType:        &contentType,
+			ContentLengthBytes: &contentLength,
+			HTTPStatusCode:     &statusCode,
+			FetchStatus:        db.FetchStatusSuccess,
+		}
+		findings := []db.Finding{
+			{
+				Type:        db.FindingTypeURL,
+				Code:        "URL_REMOTE_FILE_DETECTED",
+				Title:       "Remote downloadable file detected",
+				Description: "The fetched URL returned a supported file type.",
+				Severity:    db.SeverityLow,
+				Evidence: db.FindingEvidence{
+					Source: db.FindingEvidenceSourceURL,
+					RuleID: "URL_REMOTE_FILE_DETECTED",
+				},
+			},
+		}
+		return analysis.URLResult{
+			Target: target,
+			Metadata: db.Metadata{
+				SourceType: db.MetadataSourceTypeURLContent,
+				Entries: []db.MetadataEntry{
+					{
+						Key:         "content_type",
+						Value:       "application/pdf",
+						Category:    db.MetadataCategoryURL,
+						Sensitivity: db.MetadataSensitivityNonSensitive,
+						Source:      "headers",
+						Confidence:  db.MetadataConfidenceHigh,
+					},
+				},
+			},
+			Findings:  findings,
+			RiskScore: analysis.ScoreFindings(findings),
+			Summary:   "URL analysis completed with a remote file inspection candidate.",
+			RemoteFile: &analysis.RemoteFile{
+				Filename:  "remote.pdf",
+				MimeType:  "application/pdf",
+				SizeBytes: contentLength,
+				Content:   []byte("%PDF-1.7\n<< /Author (Remote Sender) /JS (JavaScript) >>"),
+			},
+		}, nil
+	}
+	req := httptest.NewRequest(http.MethodPost, "/analyses", strings.NewReader(`{"projectId":7,"inputType":"URL","url":{"originalUrl":"https://example.com/remote.pdf"}}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(withUserID(req.Context(), 42))
+	rec := httptest.NewRecorder()
+
+	srv.createAnalysis(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("createAnalysis returned %d with body %s", rec.Code, rec.Body.String())
+	}
+	var response AnalysisResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("response JSON did not decode: %v", err)
+	}
+	if response.URLTarget == nil || response.File == nil {
+		t.Fatalf("expected URL response with remote file, got %#v", response)
+	}
+	if response.File.OriginalFilename != "remote.pdf" || response.File.MimeType != "application/pdf" {
+		t.Fatalf("unexpected remote file reference: %#v", response.File)
+	}
+	if response.CleanFile == nil || response.CleanFile.CleaningStatus != db.CleaningStatusCompleted {
+		t.Fatalf("expected sanitized remote file, got %#v", response.CleanFile)
+	}
+	if response.SafePreview == nil || !response.SafePreview.Available {
+		t.Fatalf("expected remote file safe preview, got %#v", response.SafePreview)
+	}
+	if !metadataEntryExists(response.Metadata.Entries, "author") {
+		t.Fatalf("expected remote file metadata to be included, got %#v", response.Metadata.Entries)
 	}
 }
 
@@ -777,6 +877,9 @@ func (f *fakeAnalysisStore) CreateFile(ctx context.Context, file db.File) (db.Fi
 }
 
 func (f *fakeAnalysisStore) FileByAnalysisID(ctx context.Context, analysisID int64) (db.File, error) {
+	if f.createdFile.ID == 0 {
+		return db.File{}, db.ErrNotFound
+	}
 	return f.createdFile, nil
 }
 

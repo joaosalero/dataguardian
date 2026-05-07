@@ -88,6 +88,18 @@ func (s *server) createURLAnalysis(w http.ResponseWriter, r *http.Request, paylo
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
 		return
 	}
+	var createdFile *db.File
+	var cleanFile *db.CleanFile
+	var safePreview *AnalysisSafePreview
+	if result.RemoteFile != nil {
+		file, generatedCleanFile, generatedPreview, ok := s.persistRemoteFileInspection(w, r, root.ID, result.RemoteFile, &result)
+		if !ok {
+			return
+		}
+		createdFile = file
+		cleanFile = generatedCleanFile
+		safePreview = generatedPreview
+	}
 	result.Metadata.AnalysisID = root.ID
 	metadata, err := s.store.SaveMetadata(r.Context(), result.Metadata)
 	if err != nil {
@@ -115,7 +127,7 @@ func (s *server) createURLAnalysis(w http.ResponseWriter, r *http.Request, paylo
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, buildURLAnalysisResponse(completed, createdTarget, metadata, findings, riskScore))
+	writeJSON(w, http.StatusCreated, buildURLAnalysisResponse(completed, createdTarget, metadata, findings, riskScore, createdFile, cleanFile, safePreview))
 }
 
 func (s *server) listAnalyses(w http.ResponseWriter, r *http.Request) {
@@ -312,7 +324,11 @@ func (s *server) getAnalysis(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		writeJSON(w, http.StatusOK, buildURLAnalysisResponse(root, target, metadata, findings, riskScore))
+		file, cleanFile, safePreview, ok := s.loadOptionalURLFileParts(w, r, root.ID)
+		if !ok {
+			return
+		}
+		writeJSON(w, http.StatusOK, buildURLAnalysisResponse(root, target, metadata, findings, riskScore, file, cleanFile, safePreview))
 	default:
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
 	}
@@ -339,7 +355,7 @@ func (s *server) downloadCleanFile(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
 		return
 	}
-	if root.InputType != db.InputTypeFile {
+	if root.InputType != db.InputTypeFile && root.InputType != db.InputTypeURL {
 		writeJSON(w, http.StatusNotFound, map[string]string{"detail": "Clean file not available"})
 		return
 	}
@@ -406,7 +422,7 @@ func (s *server) downloadOriginalFile(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
 		return
 	}
-	if root.InputType != db.InputTypeFile {
+	if root.InputType != db.InputTypeFile && root.InputType != db.InputTypeURL {
 		writeJSON(w, http.StatusNotFound, map[string]string{"detail": "Original file not available"})
 		return
 	}
@@ -502,6 +518,74 @@ func (s *server) loadURLAnalysisParts(w http.ResponseWriter, r *http.Request, an
 		return db.URLTarget{}, db.Metadata{}, nil, db.RiskScore{}, false
 	}
 	return target, metadata, findings, riskScore, true
+}
+
+func (s *server) persistRemoteFileInspection(w http.ResponseWriter, r *http.Request, analysisID int64, remoteFile *analysis.RemoteFile, result *analysis.URLResult) (*db.File, *db.CleanFile, *AnalysisSafePreview, bool) {
+	mimeType := remoteFile.MimeType
+	if !allowedAnalysisMimeType(mimeType) {
+		return nil, nil, unavailableSafePreview("Remote file type is not supported for safe preview."), true
+	}
+	checksum := sha256.Sum256(remoteFile.Content)
+	checksumHex := hex.EncodeToString(checksum[:])
+	originalFilename := safeOriginalFilename(remoteFile.Filename)
+	extension := strings.ToLower(filepath.Ext(originalFilename))
+	storedReference, err := storeAnalysisFile(s.cfg.StorageDir, checksumHex, extension, remoteFile.Content)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return nil, nil, nil, false
+	}
+	createdFile, err := s.store.CreateFile(r.Context(), db.File{
+		AnalysisID:       analysisID,
+		OriginalFilename: originalFilename,
+		StoredReference:  storedReference,
+		MimeType:         mimeType,
+		SizeBytes:        int64(len(remoteFile.Content)),
+		ChecksumSHA256:   checksumHex,
+		Extension:        stringPtrOrNil(extension),
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return nil, nil, nil, false
+	}
+
+	fileResult := analysis.AnalyzeFile(remoteFile.Content, mimeType)
+	result.Findings = append(result.Findings, fileResult.Findings...)
+	result.Metadata.Entries = append(result.Metadata.Entries, fileMetadata(analysisID, createdFile, fileResult.MetadataEntries).Entries...)
+	result.RiskScore = analysis.ScoreFindings(result.Findings)
+	result.Summary = "URL analysis completed with remote file inspection."
+	if len(result.Findings) > 0 {
+		result.Summary = "URL analysis completed with remote file inspection and structured findings."
+	}
+
+	cleanFile, err := s.createCleanFile(r.Context(), createdFile, originalFilename, extension, remoteFile.Content, mimeType)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return nil, nil, nil, false
+	}
+	safePreview := safeFilePreview(remoteFile.Content, mimeType, originalFilename)
+	return &createdFile, cleanFile, safePreview, true
+}
+
+func (s *server) loadOptionalURLFileParts(w http.ResponseWriter, r *http.Request, analysisID int64) (*db.File, *db.CleanFile, *AnalysisSafePreview, bool) {
+	file, err := s.store.FileByAnalysisID(r.Context(), analysisID)
+	if errors.Is(err, db.ErrNotFound) {
+		return nil, nil, nil, true
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return nil, nil, nil, false
+	}
+	cleanFile, err := s.store.CleanFileByAnalysisID(r.Context(), analysisID)
+	if errors.Is(err, db.ErrNotFound) {
+		safePreview := s.safeFilePreviewFromStoredFile(file)
+		return &file, nil, safePreview, true
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return nil, nil, nil, false
+	}
+	safePreview := s.safeFilePreviewFromStoredFile(file)
+	return &file, &cleanFile, safePreview, true
 }
 
 // validateCreateAnalysisRequest supports the JSON contract while multipart handles real file upload.

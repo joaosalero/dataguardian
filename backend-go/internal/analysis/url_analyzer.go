@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -34,11 +35,20 @@ var urlHTTPTransport http.RoundTripper = http.DefaultTransport
 
 // URLResult contains the persisted URL target details and deterministic findings.
 type URLResult struct {
-	Target    db.URLTarget
-	Metadata  db.Metadata
-	Findings  []db.Finding
-	RiskScore db.RiskScore
-	Summary   string
+	Target     db.URLTarget
+	Metadata   db.Metadata
+	Findings   []db.Finding
+	RiskScore  db.RiskScore
+	Summary    string
+	RemoteFile *RemoteFile
+}
+
+// RemoteFile is a supported downloadable URL response kept for isolated file inspection.
+type RemoteFile struct {
+	Filename  string
+	MimeType  string
+	SizeBytes int64
+	Content   []byte
 }
 
 // AnalyzeURL fetches URL content passively and inspects raw bytes only.
@@ -89,6 +99,26 @@ func AnalyzeURL(ctx context.Context, originalURL string) (URLResult, error) {
 		if targetPreview != "" {
 			target.MetadataPreview = targetPreview
 		}
+		if remoteFile := detectRemoteFile(parsed, target, content); remoteFile != nil {
+			findings = append(findings, urlFinding(
+				"URL_REMOTE_FILE_DETECTED",
+				"Remote downloadable file detected",
+				"The fetched URL returned a supported file type that can be inspected before local download.",
+				db.SeverityLow,
+				remoteFile.MimeType,
+				"URL_REMOTE_FILE_DETECTED",
+				db.FindingEvidenceSourceURL,
+			))
+			target.MetadataPreview = ""
+			return URLResult{
+				Target:     target,
+				Metadata:   urlMetadata(0, target),
+				Findings:   findings,
+				RiskScore:  ScoreFindings(findings),
+				Summary:    "URL analysis completed with a remote file inspection candidate.",
+				RemoteFile: remoteFile,
+			}, nil
+		}
 	}
 
 	metadata := urlMetadata(0, target)
@@ -104,6 +134,81 @@ func AnalyzeURL(ctx context.Context, originalURL string) (URLResult, error) {
 		RiskScore: score,
 		Summary:   summary,
 	}, nil
+}
+
+func detectRemoteFile(requestURL *url.URL, target db.URLTarget, content []byte) *RemoteFile {
+	if len(content) == 0 || target.HTTPStatusCode == nil || *target.HTTPStatusCode < 200 || *target.HTTPStatusCode >= 300 {
+		return nil
+	}
+	headerType := strings.ToLower(strings.TrimSpace(stringFromPtr(target.ContentType)))
+	sniffedType := strings.ToLower(http.DetectContentType(content))
+	mimeType := supportedRemoteFileMimeType(headerType, sniffedType, content)
+	if mimeType == "" {
+		return nil
+	}
+	filename := remoteFileName(requestURL, stringFromPtr(target.FinalURL), mimeType)
+	return &RemoteFile{
+		Filename:  filename,
+		MimeType:  mimeType,
+		SizeBytes: int64(len(content)),
+		Content:   append([]byte(nil), content...),
+	}
+}
+
+func supportedRemoteFileMimeType(headerType string, sniffedType string, content []byte) string {
+	switch {
+	case strings.Contains(headerType, "text/html"):
+		return ""
+	case strings.Contains(headerType, "application/pdf") || sniffedType == "application/pdf":
+		return "application/pdf"
+	case strings.Contains(headerType, "image/jpeg") || sniffedType == "image/jpeg":
+		return "image/jpeg"
+	case strings.Contains(headerType, "image/png") || sniffedType == "image/png":
+		return "image/png"
+	case strings.HasPrefix(headerType, "text/plain"):
+		return "text/plain; charset=utf-8"
+	case headerType == "" && strings.HasPrefix(sniffedType, "text/plain") && !bytes.Contains(bytes.ToLower(content[:min(len(content), 1024)]), []byte("<html")):
+		return "text/plain; charset=utf-8"
+	default:
+		return ""
+	}
+}
+
+func remoteFileName(requestURL *url.URL, finalURL string, mimeType string) string {
+	source := requestURL
+	if parsed, err := url.Parse(finalURL); err == nil && parsed.Path != "" {
+		source = parsed
+	}
+	name := strings.TrimSpace(path.Base(source.Path))
+	if name == "." || name == "/" || name == "" {
+		name = "remote-file"
+	}
+	if path.Ext(name) == "" {
+		name += remoteFileExtension(mimeType)
+	}
+	return name
+}
+
+func remoteFileExtension(mimeType string) string {
+	switch {
+	case mimeType == "application/pdf":
+		return ".pdf"
+	case mimeType == "image/jpeg":
+		return ".jpg"
+	case mimeType == "image/png":
+		return ".png"
+	case strings.HasPrefix(mimeType, "text/plain"):
+		return ".txt"
+	default:
+		return ""
+	}
+}
+
+func stringFromPtr(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 var (

@@ -540,10 +540,11 @@ Authenticated product routes:
 - `POST /analyses`: create a file analysis from a multipart upload, or a URL
   analysis from a JSON body.
 - `GET /analyses/{id}`: fetch a completed file or URL analysis result.
-- `GET /analyses/{id}/file`: download the original uploaded file for a file
-  analysis owned by the signed-in user.
+- `GET /analyses/{id}/file`: download the original uploaded file, or the
+  isolated remote file captured during a URL analysis, when one is available
+  for an analysis owned by the signed-in user.
 - `GET /analyses/{id}/clean-file`: download the sanitized file for a file
-  analysis when clean-file generation completed.
+  analysis or remote-file URL analysis when clean-file generation completed.
 
 The authenticated dashboard shows project audit results and a flat analysis
 history. New users get a default project automatically, while manual project
@@ -620,8 +621,9 @@ Current limits and behavior:
   JPEG sanitization removes EXIF APP1 segments. PDF sanitization removes a
   small set of non-essential literal metadata fields such as author, producer,
   and creation date.
-- `cleanFile` is returned for PDF and JPEG analyses when sanitization is
-  recorded. PNG, text, and URL analyses return `cleanFile: null`.
+- `cleanFile` is returned for PDF and JPEG file analyses, including supported
+  remote-file URL analyses, when sanitization is recorded. PNG, text, and URL
+  responses without a supported remote file return `cleanFile: null`.
 - Original files are preserved exactly as uploaded and can be downloaded from
   the analysis details UI or from `GET /analyses/{id}/file`.
 - Completed sanitized copies can be downloaded from the analysis details UI or from
@@ -673,8 +675,14 @@ Current limits and behavior:
 - Safe Preview extracts a capped plain-text preview from passively fetched
   bytes. HTML tags, scripts, and styles are stripped as text processing only;
   the page is never rendered.
-- Clean file generation is not implemented for URL analysis, so `cleanFile` is
-  `null`.
+- If the URL response is a supported downloadable file, DataGuardian stores an
+  isolated backend copy and runs the same file inspection pipeline before any
+  local download. Initial remote file support is limited to PDF, JPEG, PNG, and
+  plain text responses under the URL response size limit.
+- Remote-file URL analyses expose the same safe preview, findings, metadata,
+  risk score, Original File download, and sanitized-copy download when
+  sanitization is supported. Unsupported URL responses remain URL-only analyses
+  with `file` and `cleanFile` unavailable.
 
 URL findings currently include:
 
@@ -689,6 +697,11 @@ URL security boundary:
 - URL previews are plain text only. DataGuardian does not execute JavaScript,
   build an interactive DOM, run headless browser automation, or simulate a user
   browser.
+- Remote files are downloaded only inside the backend analysis environment and
+  are inspected as untrusted bytes. They are not executed, rendered in active
+  viewers, or opened by browser PDF engines.
+- Remote file inspection reduces direct exposure of the user's machine, but it
+  does not guarantee malware detection or full safety.
 - Localhost, loopback IPs, link-local addresses, and private/internal IP ranges
   such as `10.0.0.0/8`, `172.16.0.0/12`, and `192.168.0.0/16` are blocked to
   reduce SSRF risk.

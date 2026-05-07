@@ -126,7 +126,7 @@ func TestAnalyzeURLCapturesRedirectChain(t *testing.T) {
 		}
 		return &http.Response{
 			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": []string{"text/plain"}},
+			Header:     http.Header{"Content-Type": []string{"text/html"}},
 			Body:       io.NopCloser(strings.NewReader("ok")),
 		}, nil
 	}))

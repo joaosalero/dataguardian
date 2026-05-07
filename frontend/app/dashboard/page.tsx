@@ -781,6 +781,36 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            {selectedAnalysis.inputType === "URL" && selectedAnalysis.file ? (
+              <div className="mt-5 rounded-lg border border-gray-200 p-4">
+                <h3 className="text-sm font-semibold text-gray-950">Remote File Detected</h3>
+                <div className="mt-3 space-y-3 text-sm text-gray-700">
+                  <dl className="grid gap-2 sm:grid-cols-3">
+                    <div>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">MIME type</dt>
+                      <dd className="mt-1 break-words text-gray-900">{selectedAnalysis.file.mimeType}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">File size</dt>
+                      <dd className="mt-1 text-gray-900">{formatBytes(selectedAnalysis.file.sizeBytes)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">Risk level</dt>
+                      <dd className="mt-1 text-gray-900">{selectedAnalysis.riskScore.level}</dd>
+                    </div>
+                  </dl>
+                  <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    This file was downloaded and inspected inside the isolated analysis environment before any local download.
+                  </p>
+                  {selectedAnalysis.riskScore.level === "HIGH" ? (
+                    <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                      This remote file is high risk. Do not download or open it locally without caution.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
             <div className="mt-5 rounded-lg border border-gray-200 p-4">
               <h3 className="text-sm font-semibold text-gray-950">Original File</h3>
               {selectedAnalysis.file ? (

@@ -46,29 +46,14 @@ func buildFileAnalysisResponse(
 		StartedAt:     analysis.StartedAt,
 		CompletedAt:   analysis.CompletedAt,
 		FailureReason: analysis.FailureReason,
-		File: &AnalysisFileReference{
-			ID:               file.ID,
-			OriginalFilename: file.OriginalFilename,
-			MimeType:         file.MimeType,
-			SizeBytes:        file.SizeBytes,
-			ChecksumSHA256:   file.ChecksumSHA256,
-			Extension:        file.Extension,
-		},
-		Findings:    analysisFindings(findings),
-		Metadata:    analysisMetadata(metadata),
-		RiskScore:   analysisRiskScore(riskScore),
-		SafePreview: safePreview,
+		File:          fileReference(file),
+		Findings:      analysisFindings(findings),
+		Metadata:      analysisMetadata(metadata),
+		RiskScore:     analysisRiskScore(riskScore),
+		SafePreview:   safePreview,
 	}
 	if cleanFile != nil {
-		response.CleanFile = &AnalysisCleanFileReference{
-			ID:                  cleanFile.ID,
-			Filename:            cleanFile.Filename,
-			MimeType:            cleanFile.MimeType,
-			SizeBytes:           cleanFile.SizeBytes,
-			ChecksumSHA256:      cleanFile.ChecksumSHA256,
-			CleaningStatus:      cleanFile.CleaningStatus,
-			RemovedMetadataKeys: cleanFile.RemovedMetadataKeys,
-		}
+		response.CleanFile = cleanFileReference(*cleanFile)
 	}
 	return response
 }
@@ -79,9 +64,14 @@ func buildURLAnalysisResponse(
 	metadata db.Metadata,
 	findings []db.Finding,
 	riskScore db.RiskScore,
+	file *db.File,
+	cleanFile *db.CleanFile,
+	safePreview *AnalysisSafePreview,
 ) AnalysisResponse {
-	safePreview := safePreviewFromMetadata(metadata)
-	return AnalysisResponse{
+	if safePreview == nil {
+		safePreview = safePreviewFromMetadata(metadata)
+	}
+	response := AnalysisResponse{
 		AnalysisID:    analysis.ID,
 		ProjectID:     analysis.ProjectID,
 		InputType:     analysis.InputType,
@@ -107,8 +97,37 @@ func buildURLAnalysisResponse(
 		Findings:    analysisFindings(findings),
 		Metadata:    analysisMetadata(metadata),
 		RiskScore:   analysisRiskScore(riskScore),
-		CleanFile:   nil,
 		SafePreview: safePreview,
+	}
+	if file != nil {
+		response.File = fileReference(*file)
+	}
+	if cleanFile != nil {
+		response.CleanFile = cleanFileReference(*cleanFile)
+	}
+	return response
+}
+
+func fileReference(file db.File) *AnalysisFileReference {
+	return &AnalysisFileReference{
+		ID:               file.ID,
+		OriginalFilename: file.OriginalFilename,
+		MimeType:         file.MimeType,
+		SizeBytes:        file.SizeBytes,
+		ChecksumSHA256:   file.ChecksumSHA256,
+		Extension:        file.Extension,
+	}
+}
+
+func cleanFileReference(cleanFile db.CleanFile) *AnalysisCleanFileReference {
+	return &AnalysisCleanFileReference{
+		ID:                  cleanFile.ID,
+		Filename:            cleanFile.Filename,
+		MimeType:            cleanFile.MimeType,
+		SizeBytes:           cleanFile.SizeBytes,
+		ChecksumSHA256:      cleanFile.ChecksumSHA256,
+		CleaningStatus:      cleanFile.CleaningStatus,
+		RemovedMetadataKeys: cleanFile.RemovedMetadataKeys,
 	}
 }
 
