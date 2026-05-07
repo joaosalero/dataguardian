@@ -540,6 +540,8 @@ Authenticated product routes:
 - `POST /analyses`: create a file analysis from a multipart upload, or a URL
   analysis from a JSON body.
 - `GET /analyses/{id}`: fetch a completed file or URL analysis result.
+- `GET /analyses/{id}/file`: download the original uploaded file for a file
+  analysis owned by the signed-in user.
 - `GET /analyses/{id}/clean-file`: download the sanitized file for a file
   analysis when clean-file generation completed.
 
@@ -548,14 +550,16 @@ history. New users get a default project automatically, while manual project
 creation remains available for users who need separate project scopes. Analysis
 rows include target type, status, risk level, and timestamp. Selecting an
 analysis loads the existing `GET /analyses/{id}` result and shows summary,
-findings, deterministic explanations, metadata, risk score, and sanitized file
-details when available. The sanitized file panel includes filename, size,
-cleaning status, a required warning that metadata removal does not guarantee
-file safety, and a download button backed by the authenticated clean-file
-download route. The Safe Preview panel shows a static image or plain-text
-preview when one can be generated without executing active content. The history
-endpoint is scoped through the signed-in user's projects, so users only see
-analyses attached to projects they own.
+findings, deterministic explanations, metadata, risk score, original file
+details, and sanitized file details when available. The Original File panel
+shows filename, MIME type, size, risk warning, and a mediated download button.
+High-risk originals require an explicit browser confirmation before download.
+The Sanitized File panel shows filename, size, cleaning status, metadata removed,
+sanitization limitations, and a separate sanitized-copy download button. The
+Safe Preview panel shows a static image or plain-text preview when one can be
+generated without executing active content. The history endpoint is scoped
+through the signed-in user's projects, so users only see analyses attached to
+projects they own.
 
 Analysis responses include an explanation layer for each finding. This layer is
 template-based and deterministic: it explains findings that already exist,
@@ -618,8 +622,14 @@ Current limits and behavior:
   and creation date.
 - `cleanFile` is returned for PDF and JPEG analyses when sanitization is
   recorded. PNG, text, and URL analyses return `cleanFile: null`.
-- Completed clean files can be downloaded from the analysis details UI or from
+- Original files are preserved exactly as uploaded and can be downloaded from
+  the analysis details UI or from `GET /analyses/{id}/file`.
+- Completed sanitized copies can be downloaded from the analysis details UI or from
   `GET /analyses/{id}/clean-file` with the signed-in user's session cookie.
+- Sanitization transparency is shown in the dashboard. EXIF removal is reported
+  as EXIF removed, including GPS/location fields when present. PDF metadata
+  removal reports author, producer/tool, and timestamp fields when applicable.
+  Sanitization removes metadata only; it does not remove malware.
 
 Security boundary:
 

@@ -385,6 +385,69 @@ func (s *server) downloadCleanFile(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, cleanFile.Filename, stat.ModTime(), file)
 }
 
+func (s *server) downloadOriginalFile(w http.ResponseWriter, r *http.Request) {
+	userID, ok := userIDFromContext(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"detail": "Invalid authentication credentials"})
+		return
+	}
+	analysisID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || analysisID <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"detail": "Invalid analysis id"})
+		return
+	}
+
+	root, err := s.store.GetAnalysisByID(r.Context(), userID, analysisID)
+	if errors.Is(err, db.ErrNotFound) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"detail": "Analysis not found"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return
+	}
+	if root.InputType != db.InputTypeFile {
+		writeJSON(w, http.StatusNotFound, map[string]string{"detail": "Original file not available"})
+		return
+	}
+
+	originalFile, err := s.store.FileByAnalysisID(r.Context(), analysisID)
+	if errors.Is(err, db.ErrNotFound) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"detail": "Original file not available"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return
+	}
+
+	path, ok := storedFilePath(s.cfg.StorageDir, originalFile.StoredReference)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return
+	}
+	file, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"detail": "Original file not found"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return
+	}
+	defer file.Close()
+	stat, err := file.Stat()
+	if err != nil || stat.IsDir() {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
+		return
+	}
+
+	w.Header().Set("Content-Type", originalFile.MimeType)
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": originalFile.OriginalFilename}))
+	w.Header().Set("Content-Length", strconv.FormatInt(stat.Size(), 10))
+	http.ServeContent(w, r, originalFile.OriginalFilename, stat.ModTime(), file)
+}
+
 func (s *server) loadFileAnalysisParts(w http.ResponseWriter, r *http.Request, analysisID int64) (db.File, db.Metadata, []db.Finding, db.RiskScore, *db.CleanFile, bool) {
 	file, err := s.store.FileByAnalysisID(r.Context(), analysisID)
 	if err != nil {

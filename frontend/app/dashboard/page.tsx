@@ -55,6 +55,12 @@ type AnalysisDetail = {
   inputType: "FILE" | "URL";
   status: string;
   summary: string;
+  file?: null | {
+    originalFilename: string;
+    mimeType: string;
+    sizeBytes: number;
+    checksumSha256: string;
+  };
   findings: AnalysisFinding[];
   metadata: {
     entries: MetadataEntry[];
@@ -112,8 +118,10 @@ export default function DashboardPage() {
   const [analyzingFile, setAnalyzingFile] = useState(false);
   const [analyzingURL, setAnalyzingURL] = useState(false);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+  const [downloadingOriginalFile, setDownloadingOriginalFile] = useState(false);
   const [downloadingCleanFile, setDownloadingCleanFile] = useState(false);
   const [error, setError] = useState("");
+  const [originalFileError, setOriginalFileError] = useState("");
   const [cleanFileError, setCleanFileError] = useState("");
 
   const selectedProject = useMemo(
@@ -226,6 +234,7 @@ export default function DashboardPage() {
 
   async function selectAnalysis(analysisID: number) {
     setError("");
+    setOriginalFileError("");
     setCleanFileError("");
     setLoadingAnalysis(true);
     try {
@@ -305,6 +314,50 @@ export default function DashboardPage() {
       setCleanFileError(err instanceof Error ? err.message : "Could not download sanitized file.");
     } finally {
       setDownloadingCleanFile(false);
+    }
+  }
+
+  async function downloadOriginalFile() {
+    if (!selectedAnalysis?.file) {
+      setOriginalFileError("No original file is available for this analysis.");
+      return;
+    }
+    if (
+      selectedAnalysis.riskScore.level === "HIGH" &&
+      !window.confirm("This file is high risk. Download the original file anyway?")
+    ) {
+      return;
+    }
+    setOriginalFileError("");
+    setDownloadingOriginalFile(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/analyses/${selectedAnalysis.analysisId}/file`, {
+        credentials: "include",
+      });
+      if (response.status === 401) {
+        router.push("/login");
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
+      const blob = await response.blob();
+      if (blob.size === 0) {
+        throw new Error("The original file response was empty.");
+      }
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = selectedAnalysis.file.originalFilename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setOriginalFileError(err instanceof Error ? err.message : "Could not download original file.");
+    } finally {
+      setDownloadingOriginalFile(false);
     }
   }
 
@@ -729,6 +782,46 @@ export default function DashboardPage() {
             </div>
 
             <div className="mt-5 rounded-lg border border-gray-200 p-4">
+              <h3 className="text-sm font-semibold text-gray-950">Original File</h3>
+              {selectedAnalysis.file ? (
+                <div className="mt-3 space-y-3 text-sm text-gray-700">
+                  <dl className="grid gap-2 sm:grid-cols-3">
+                    <div>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">Filename</dt>
+                      <dd className="mt-1 break-words text-gray-900">{selectedAnalysis.file.originalFilename}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">MIME type</dt>
+                      <dd className="mt-1 break-words text-gray-900">{selectedAnalysis.file.mimeType}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">Size</dt>
+                      <dd className="mt-1 text-gray-900">{formatBytes(selectedAnalysis.file.sizeBytes)}</dd>
+                    </div>
+                  </dl>
+                  <p className={`rounded-md border px-3 py-2 text-sm ${selectedAnalysis.riskScore.level === "HIGH" ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+                    The original file is preserved exactly as uploaded. Review the preview, findings, and risk score before downloading or opening it locally.
+                  </p>
+                  {originalFileError ? (
+                    <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                      {originalFileError}
+                    </p>
+                  ) : null}
+                  <button
+                    className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={downloadingOriginalFile}
+                    onClick={downloadOriginalFile}
+                    type="button"
+                  >
+                    {downloadingOriginalFile ? "Downloading..." : "Download Original"}
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-gray-600">No original file download is available for this analysis.</p>
+              )}
+            </div>
+
+            <div className="mt-5 rounded-lg border border-gray-200 p-4">
               <h3 className="text-sm font-semibold text-gray-950">Safe Preview</h3>
               <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                 This preview is rendered in isolated safe mode. Active content is not executed.
@@ -779,11 +872,20 @@ export default function DashboardPage() {
                     </div>
                   </dl>
                   <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                    This version has metadata removed. It does NOT guarantee the file is safe.
+                    The original file is preserved separately. This sanitized copy has selected metadata removed, but it does NOT remove malware or guarantee that the content is safe.
                   </p>
-                  <p className="text-xs text-gray-500">
-                    Removed metadata: {selectedAnalysis.cleanFile.removedMetadataKeys.length > 0 ? selectedAnalysis.cleanFile.removedMetadataKeys.join(", ") : "none recorded"}
-                  </p>
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-gray-500">Metadata removed</p>
+                    {selectedAnalysis.cleanFile.removedMetadataKeys.length > 0 ? (
+                      <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                        {describeRemovedMetadata(selectedAnalysis.cleanFile.removedMetadataKeys).map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-sm text-gray-600">No removable metadata was recorded for this sanitized copy.</p>
+                    )}
+                  </div>
                   {cleanFileError ? (
                     <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                       {cleanFileError}
@@ -795,11 +897,13 @@ export default function DashboardPage() {
                     onClick={downloadCleanFile}
                     type="button"
                   >
-                    {downloadingCleanFile ? "Downloading..." : "Download Clean File"}
+                    {downloadingCleanFile ? "Downloading..." : "Download Sanitized Copy"}
                   </button>
                 </div>
               ) : (
-                <p className="mt-2 text-sm text-gray-600">No clean file is available for this analysis.</p>
+                <p className="mt-2 text-sm text-gray-600">
+                  No sanitized copy is available for this analysis. The format may be unsupported, or no sanitized output was generated.
+                </p>
               )}
             </div>
           </section>
@@ -847,4 +951,32 @@ function formatBytes(value: number) {
     return `${(value / 1024).toFixed(1)} KB`;
   }
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function describeRemovedMetadata(keys: string[]) {
+  const descriptions = new Set<string>();
+  keys.forEach((key) => {
+    switch (key) {
+      case "exif":
+        descriptions.add("EXIF metadata removed, including GPS/location fields when present.");
+        break;
+      case "gps":
+        descriptions.add("GPS/location metadata removed.");
+        break;
+      case "author":
+        descriptions.add("Author metadata removed.");
+        break;
+      case "producer":
+        descriptions.add("Producer/tool metadata removed.");
+        break;
+      case "creation_date":
+      case "timestamp":
+      case "datetime":
+        descriptions.add("Timestamp metadata removed.");
+        break;
+      default:
+        descriptions.add(`${key.replaceAll("_", " ")} removed.`);
+    }
+  });
+  return Array.from(descriptions);
 }
