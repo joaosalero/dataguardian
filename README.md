@@ -30,6 +30,183 @@ Known limitations:
 - Clean files remove selected metadata only; they are not a malware removal or
   full content-disarm guarantee.
 
+## What DataGuardian Does
+
+DataGuardian lets you sign in, upload a supported file or submit a URL, and get
+a local security-oriented analysis. It shows metadata, deterministic findings,
+risk score, explanations, and, for supported files, a sanitized copy with some
+metadata removed.
+
+DataGuardian is Docker-first. You do not need to install Go, Node.js, or
+PostgreSQL just to try the app. Docker starts the database, backend, and
+frontend together.
+
+Important sanitized-file warning: a clean file has selected metadata removed.
+It does NOT guarantee that the file is safe, malware-free, or fully disarmed.
+
+## Start Here
+
+### Requirements
+
+- Docker with Docker Compose.
+- Git, so you can run `git clone`.
+- A terminal app.
+- A web browser.
+
+If `git` is not installed, install it from <https://git-scm.com/downloads> or
+use the package manager for your operating system.
+
+### Linux Users
+
+1. Install Docker.
+   - Docker Desktop for Linux: <https://docs.docker.com/desktop/setup/install/linux/>
+   - Docker Engine for Linux: <https://docs.docker.com/engine/install/>
+2. Open a terminal.
+   - Ubuntu/GNOME: press `Ctrl` + `Alt` + `T`.
+   - Or open the app menu and search for `Terminal`.
+3. Clone the repository:
+
+```bash
+git clone https://github.com/joaosalero/dataguardian.git
+cd dataguardian
+```
+
+4. Start DataGuardian:
+
+```bash
+docker compose up --build
+```
+
+5. Open the app in your browser:
+
+```text
+http://localhost:3000
+```
+
+6. Stop DataGuardian when finished:
+
+```bash
+docker compose down
+```
+
+### Windows Users
+
+1. Install Docker Desktop for Windows:
+   <https://docs.docker.com/desktop/setup/install/windows-install/>
+2. Start Docker Desktop from the Start menu and wait until it says Docker is
+   running.
+3. Open a terminal.
+   - Press `Windows`, type `PowerShell`, and open Windows PowerShell.
+   - Git Bash also works if you installed Git for Windows.
+4. Clone the repository:
+
+```powershell
+git clone https://github.com/joaosalero/dataguardian.git
+cd dataguardian
+```
+
+5. Start DataGuardian:
+
+```powershell
+docker compose up --build
+```
+
+6. Open the app in your browser:
+
+```text
+http://localhost:3000
+```
+
+7. Stop DataGuardian when finished:
+
+```powershell
+docker compose down
+```
+
+### macOS Users
+
+1. Install Docker Desktop for Mac:
+   <https://docs.docker.com/desktop/setup/install/mac-install/>
+2. Start Docker Desktop from Applications and wait until Docker is running.
+3. Open a terminal.
+   - Press `Command` + `Space`, type `Terminal`, and press `Enter`.
+4. Clone the repository:
+
+```bash
+git clone https://github.com/joaosalero/dataguardian.git
+cd dataguardian
+```
+
+5. Start DataGuardian:
+
+```bash
+docker compose up --build
+```
+
+6. Open the app in your browser:
+
+```text
+http://localhost:3000
+```
+
+7. Stop DataGuardian when finished:
+
+```bash
+docker compose down
+```
+
+### Dashboard Walkthrough
+
+1. Open `http://localhost:3000`.
+2. Create an account, or sign in with a local demo user:
+
+```text
+admin / admin123
+test  / test123
+```
+
+3. The dashboard creates a default project automatically if you do not have
+   one.
+4. To analyze a file, choose a PDF or JPEG in `Analysis file`, then select
+   `Analyze File`.
+5. To analyze a URL, type an `http` or `https` URL, then select `Analyze URL`.
+6. Open `Analysis history` and select `View` to inspect findings, metadata,
+   explanations, risk score, and sanitized-file details.
+7. If a sanitized file is available, use `Download Clean File`. Remember: this
+   only removes selected metadata and does not prove the file is safe.
+
+### Tests For Users
+
+Run the main automated checks:
+
+```bash
+./run-tests.sh
+```
+
+Run the Docker health validation:
+
+```bash
+docker compose up --build validation
+```
+
+Install optional browser test tooling:
+
+```bash
+./scripts/install.sh
+```
+
+Run browser E2E tests after the app is running:
+
+```bash
+.venv/bin/pytest tests/e2e/test_full_flow.py
+```
+
+Run the visual browser E2E test:
+
+```bash
+.venv/bin/pytest tests/e2e/test_full_flow.py -s --headed --slowmo 300
+```
+
 ## Product Perspective
 
 DataGuardian is aimed at engineers, security-minded teams, and technical
@@ -583,7 +760,17 @@ run-tests.sh             Local validation bundle
 
 ## Troubleshooting
 
-Port conflict:
+Docker not running:
+
+- Start Docker Desktop from your applications menu.
+- Wait until Docker reports that it is running.
+- Try:
+
+```bash
+docker compose config --services
+```
+
+Ports already in use:
 
 ```bash
 ./scripts/doctor.sh
@@ -592,10 +779,9 @@ Port conflict:
 If a non-DataGuardian process owns port `3000`, `8000`, or `5434`, stop it
 manually and rerun startup. The scripts do not kill unrelated processes.
 
-Docker not running:
+Backend or frontend did not start:
 
 ```bash
-docker compose config --services
 docker compose up -d db backend-go frontend
 ```
 
@@ -605,4 +791,27 @@ Frontend cannot reach backend:
 - Confirm `NEXT_PUBLIC_API_URL` is `http://localhost:8000` for local Docker use.
 - Restart with `./scripts/up.sh`.
 
-Missing pytest is expected unless you are actively running browser E2E tests.
+Pytest not installed:
+
+- This is expected unless you are running browser E2E tests.
+- Install the optional tools with:
+
+```bash
+./scripts/install.sh
+```
+
+Browser E2E does not open:
+
+- Confirm the app is running at `http://localhost:3000`.
+- Confirm Playwright installed Chromium:
+
+```bash
+.venv/bin/python -m playwright install chromium
+```
+
+- In a headless server or restricted environment, use the non-visual E2E
+  command first:
+
+```bash
+.venv/bin/pytest tests/e2e/test_full_flow.py
+```
