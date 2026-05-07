@@ -23,11 +23,12 @@ Core features are functional:
 - URL analysis (safe remote inspection)
 - Metadata extraction and classification
 - Deterministic findings and risk scoring
-- Clean file (sanitized output generation)
+- Clean file generation and authenticated sanitized-file download
 
 Known limitations:
-- UX improvements in progress
 - Pagination and filtering not implemented yet
+- Clean files remove selected metadata only; they are not a malware removal or
+  full content-disarm guarantee.
 
 ## Product Perspective
 
@@ -125,7 +126,7 @@ Prerequisite: Docker with Docker Compose.
 Start the complete system:
 
 ```bash
-docker compose up
+docker compose up --build
 ```
 
 Open:
@@ -211,7 +212,13 @@ installed, E2E is skipped gracefully:
 Run the Docker-first stack:
 
 ```bash
-docker compose up
+docker compose up --build
+```
+
+Run the Docker health validation service after or during local startup:
+
+```bash
+docker compose up --build validation
 ```
 
 Install frontend dependencies:
@@ -299,9 +306,10 @@ Start the stack before running E2E:
 pytest tests/e2e/test_full_flow.py
 ```
 
-The test registers a unique user, logs in through the browser, creates a
-project in the dashboard, creates file and URL analyses with the authenticated
-browser session, then verifies dashboard history and analysis details.
+The test registers a unique user, logs in through the browser, verifies the
+default project flow, creates file and URL analyses with the authenticated
+browser session, verifies dashboard history and analysis details, checks the
+sanitized-file section and download action, then signs out.
 
 Build local backend binaries:
 
@@ -549,6 +557,8 @@ Release focus:
 - Security posture improved with Argon2id passwords, RS256 session tokens,
   hardened cookies, rate limiting, dependency scanning, and secret checks.
 - Docker-based execution standardized for local usage and automated flows.
+- File and URL analysis flows completed with deterministic findings, metadata,
+  risk scoring, explanations, and sanitized-file download for file analyses.
 - Optional pytest and Playwright E2E testing isolated from core application
   requirements.
 - Repository hygiene cleaned with generated artifacts, secrets, and local caches

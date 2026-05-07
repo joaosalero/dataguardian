@@ -132,6 +132,11 @@ def run_go_auth_flow(page: Page) -> None:
         page.get_by_role("button", name="Download Clean File").click()
     download = download_info.value
     assert download.suggested_filename == "e2e-sample-clean.pdf"
+
+    log("Signing out")
+    page.get_by_role("button", name="Sign out").click()
+    page.wait_for_url("**/login", timeout=10_000)
+    expect(page.get_by_role("button", name="Sign in")).to_be_visible()
     log("FULL E2E USER FLOW PASSED")
 
 

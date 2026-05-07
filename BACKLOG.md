@@ -1,10 +1,12 @@
 # DataGuardian Backlog
 
-## P0 — Critical (must fix before release)
+## Release readiness — Completed for first stable candidate
 
-- [ ] Expose CleanFile download in UI
-- [ ] Improve project UX (auto/default project)
-- [ ] Ensure error messages are clear in UI
+- [x] Expose CleanFile download in UI
+- [x] Improve project UX with auto/default project selection
+- [x] Ensure core analysis and download errors are visible in UI
+- [x] Align README with Docker-first usage and current product behavior
+- [x] Cover sanitized-file UI and download action in E2E
 
 ---
 
@@ -12,7 +14,7 @@
 
 - [ ] Add pagination to analysis history
 - [ ] Add filtering (by type, risk, date)
-- [ ] Improve loading states (UX feedback)
+- [ ] Polish loading states for larger analysis histories
 - [ ] Improve validation for URL input
 - [ ] Improve validation for file upload
 
@@ -20,8 +22,8 @@
 
 ## P2 — Productization
 
-- [ ] Simplify startup (one-command UX)
-- [ ] Improve README with user-focused instructions
+- [x] Simplify startup around Docker Compose defaults
+- [x] Add Docker Compose validation service
 - [ ] Add screenshots to README
 - [ ] Evaluate packaging options (.deb, Windows, macOS)
 

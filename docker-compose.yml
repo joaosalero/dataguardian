@@ -58,6 +58,23 @@ services:
       NEXT_PUBLIC_ENVIRONMENT: ${NEXT_PUBLIC_ENVIRONMENT:-dev}
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/login').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  validation:
+    image: dataguardian-backend-go
+    depends_on:
+      backend-go:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    command: >
+      sh -c "curl -fsS http://backend-go:8000/health
+      && curl -fsS http://frontend:3000/login >/dev/null
+      && echo 'DataGuardian validation passed'"
 
   backend-go-test:
     image: golang:1.25
