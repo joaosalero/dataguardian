@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -31,6 +32,7 @@ func TestAnalysisRoutesExistAndRequireAuth(t *testing.T) {
 		{method: http.MethodGet, path: "/analyses"},
 		{method: http.MethodPost, path: "/analyses", body: `{"projectId":1,"inputType":"URL","url":{"originalUrl":"https://example.com"}}`},
 		{method: http.MethodGet, path: "/analyses/1"},
+		{method: http.MethodGet, path: "/analyses/1/clean-file"},
 	} {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 		rec := httptest.NewRecorder()
@@ -100,6 +102,65 @@ func metadataEntryExists(entries []db.MetadataEntry, key string) bool {
 		}
 	}
 	return false
+}
+
+func TestDownloadCleanFileSuccess(t *testing.T) {
+	storageDir := t.TempDir()
+	content := []byte("%PDF-1.7\nclean")
+	path := filepath.Join(storageDir, "clean.pdf")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+	store := newFakeAnalysisStore()
+	store.analysis = db.Analysis{ID: 99, ProjectID: 7, InputType: db.InputTypeFile, Status: db.AnalysisStatusCompleted}
+	store.cleanFile = db.CleanFile{
+		ID:              104,
+		AnalysisID:      99,
+		StoredReference: path,
+		Filename:        "sample-clean.pdf",
+		MimeType:        "application/pdf",
+		SizeBytes:       int64(len(content)),
+		CleaningStatus:  db.CleaningStatusCompleted,
+	}
+	srv := &server{
+		cfg:   config.Settings{StorageDir: storageDir},
+		store: store,
+	}
+	req := httptest.NewRequest(http.MethodGet, "/analyses/99/clean-file", nil)
+	req.SetPathValue("id", "99")
+	req = req.WithContext(withUserID(req.Context(), 42))
+	rec := httptest.NewRecorder()
+
+	srv.downloadCleanFile(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("downloadCleanFile returned %d with body %s", rec.Code, rec.Body.String())
+	}
+	if rec.Body.String() != string(content) {
+		t.Fatalf("unexpected download body: %q", rec.Body.String())
+	}
+	if disposition := rec.Header().Get("Content-Disposition"); !strings.Contains(disposition, "attachment") || !strings.Contains(disposition, "sample-clean.pdf") {
+		t.Fatalf("expected attachment disposition, got %q", disposition)
+	}
+}
+
+func TestDownloadCleanFileReturnsNotFoundWhenMissing(t *testing.T) {
+	store := newFakeAnalysisStore()
+	store.analysis = db.Analysis{ID: 99, ProjectID: 7, InputType: db.InputTypeFile, Status: db.AnalysisStatusCompleted}
+	srv := &server{
+		cfg:   config.Settings{StorageDir: t.TempDir()},
+		store: store,
+	}
+	req := httptest.NewRequest(http.MethodGet, "/analyses/99/clean-file", nil)
+	req.SetPathValue("id", "99")
+	req = req.WithContext(withUserID(req.Context(), 42))
+	rec := httptest.NewRecorder()
+
+	srv.downloadCleanFile(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("downloadCleanFile returned %d, expected %d", rec.Code, http.StatusNotFound)
+	}
 }
 
 func TestCreateFileAnalysisCleanFileFailureIsRecorded(t *testing.T) {

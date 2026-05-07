@@ -27,8 +27,6 @@ Core features are functional:
 
 Known limitations:
 - UX improvements in progress
-- Clean file download not yet exposed in UI
-- Project management UX will be simplified
 - Pagination and filtering not implemented yet
 
 ## Product Perspective
@@ -87,8 +85,8 @@ Active runtime services:
 The Go API handles registration, login, session validation, logout, project
 tracking, baseline audit runs, local dev/test bootstrap users, and PostgreSQL
 persistence. The frontend provides login, registration, an authenticated
-dashboard, project creation, audit execution, audit results, and session-aware
-navigation.
+dashboard, automatic default project selection for new users, optional project
+creation, audit execution, audit results, and session-aware navigation.
 
 The legacy Python implementation is not part of Docker, CI, startup scripts, or
 the active runtime.
@@ -352,14 +350,20 @@ Authenticated product routes:
 - `POST /analyses`: create a file analysis from a multipart upload, or a URL
   analysis from a JSON body.
 - `GET /analyses/{id}`: fetch a completed file or URL analysis result.
+- `GET /analyses/{id}/clean-file`: download the sanitized file for a file
+  analysis when clean-file generation completed.
 
 The authenticated dashboard shows project audit results and a flat analysis
-history. Analysis rows include target type, status, risk level, and timestamp.
-Selecting an analysis loads the existing `GET /analyses/{id}` result and shows
-summary, findings, deterministic explanations, metadata, risk score, and
-clean-file status when available. The history endpoint is scoped through the
-signed-in user's projects, so users only see analyses attached to projects they
-own.
+history. New users get a default project automatically, while manual project
+creation remains available for users who need separate project scopes. Analysis
+rows include target type, status, risk level, and timestamp. Selecting an
+analysis loads the existing `GET /analyses/{id}` result and shows summary,
+findings, deterministic explanations, metadata, risk score, and sanitized file
+details when available. The sanitized file panel includes filename, size,
+cleaning status, a required warning that metadata removal does not guarantee
+file safety, and a download button backed by the authenticated clean-file
+download route. The history endpoint is scoped through the signed-in user's
+projects, so users only see analyses attached to projects they own.
 
 Analysis responses include an explanation layer for each finding. This layer is
 template-based and deterministic: it explains findings that already exist,
@@ -417,6 +421,8 @@ Current limits and behavior:
   and creation date.
 - `cleanFile` is returned for file analyses when sanitization is recorded.
   URL analyses still return `cleanFile: null`.
+- Completed clean files can be downloaded from the analysis details UI or from
+  `GET /analyses/{id}/clean-file` with the signed-in user's session cookie.
 
 Security boundary:
 

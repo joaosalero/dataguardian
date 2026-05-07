@@ -104,7 +104,9 @@ export default function DashboardPage() {
   const [analyzingFile, setAnalyzingFile] = useState(false);
   const [analyzingURL, setAnalyzingURL] = useState(false);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+  const [downloadingCleanFile, setDownloadingCleanFile] = useState(false);
   const [error, setError] = useState("");
+  const [cleanFileError, setCleanFileError] = useState("");
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectID) ?? null,
@@ -128,7 +130,7 @@ export default function DashboardPage() {
         const profile = (await profileResponse.json()) as { email: string };
         setEmail(profile.email);
 
-        const loadedProjects = await fetchProjects();
+        const loadedProjects = await ensureDefaultProject(await fetchProjects());
         const firstProjectID = loadedProjects[0]?.id ?? null;
         setSelectedProjectID(firstProjectID);
         if (firstProjectID) {
@@ -173,6 +175,25 @@ export default function DashboardPage() {
     return loadedProjects;
   }
 
+  async function ensureDefaultProject(loadedProjects: Project[]) {
+    if (loadedProjects.length > 0) {
+      return loadedProjects;
+    }
+    const response = await apiFetch("/projects", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Default Project",
+        target: "local-analysis",
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(await parseError(response));
+    }
+    const project = (await response.json()) as Project;
+    setProjects([project]);
+    return [project];
+  }
+
   async function fetchAudits(projectID: number) {
     const response = await apiFetch(`/projects/${projectID}/audits`);
     if (!response.ok) {
@@ -193,6 +214,7 @@ export default function DashboardPage() {
 
   async function selectAnalysis(analysisID: number) {
     setError("");
+    setCleanFileError("");
     setLoadingAnalysis(true);
     try {
       const response = await apiFetch(`/analyses/${analysisID}`);
@@ -233,6 +255,44 @@ export default function DashboardPage() {
       setError(err instanceof Error ? err.message : "Could not create project.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function downloadCleanFile() {
+    if (!selectedAnalysis?.cleanFile) {
+      setCleanFileError("No sanitized file is available for this analysis.");
+      return;
+    }
+    setCleanFileError("");
+    setDownloadingCleanFile(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/analyses/${selectedAnalysis.analysisId}/clean-file`, {
+        credentials: "include",
+      });
+      if (response.status === 401) {
+        router.push("/login");
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
+      const blob = await response.blob();
+      if (blob.size === 0) {
+        throw new Error("The sanitized file response was empty.");
+      }
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = selectedAnalysis.cleanFile.filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setCleanFileError(err instanceof Error ? err.message : "Could not download sanitized file.");
+    } finally {
+      setDownloadingCleanFile(false);
     }
   }
 
@@ -361,41 +421,7 @@ export default function DashboardPage() {
           </p>
         ) : null}
 
-        <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
-          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-gray-950">Create project</h2>
-            <form className="mt-4 space-y-4" onSubmit={createProject}>
-              <label className="block">
-                <span className="text-sm font-medium text-gray-700">Project name</span>
-                <input
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900"
-                  disabled={saving}
-                  onChange={(event) => setProjectName(event.target.value)}
-                  required
-                  value={projectName}
-                />
-              </label>
-              <label className="block">
-                <span className="text-sm font-medium text-gray-700">Database target</span>
-                <input
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900"
-                  disabled={saving}
-                  onChange={(event) => setProjectTarget(event.target.value)}
-                  placeholder="postgres://production-db"
-                  required
-                  value={projectTarget}
-                />
-              </label>
-              <button
-                className="w-full rounded-md bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-400"
-                disabled={saving || !projectName.trim() || !projectTarget.trim()}
-                type="submit"
-              >
-                {saving ? "Creating..." : "Create project"}
-              </button>
-            </form>
-          </section>
-
+        <div className="grid gap-6">
           <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
             <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
               <div>
@@ -434,9 +460,47 @@ export default function DashboardPage() {
 
             {!loading && projects.length === 0 ? (
               <p className="mt-5 rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
-                No projects yet. Create a project to start auditing a database target.
+                Preparing a default project for your analyses.
               </p>
             ) : null}
+
+            <details className="mt-5 rounded-lg border border-gray-200 p-4">
+              <summary className="cursor-pointer text-sm font-medium text-gray-800">
+                Create another project
+              </summary>
+              <form className="mt-4 grid gap-4 lg:grid-cols-[1fr_1fr_auto]" onSubmit={createProject}>
+                <label className="block">
+                  <span className="text-sm font-medium text-gray-700">Project name</span>
+                  <input
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900"
+                    disabled={saving}
+                    onChange={(event) => setProjectName(event.target.value)}
+                    required
+                    value={projectName}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-medium text-gray-700">Database target</span>
+                  <input
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900"
+                    disabled={saving}
+                    onChange={(event) => setProjectTarget(event.target.value)}
+                    placeholder="postgres://production-db"
+                    required
+                    value={projectTarget}
+                  />
+                </label>
+                <div className="flex items-end">
+                  <button
+                    className="w-full rounded-md bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-400 lg:w-auto"
+                    disabled={saving || !projectName.trim() || !projectTarget.trim()}
+                    type="submit"
+                  >
+                    {saving ? "Creating..." : "Create project"}
+                  </button>
+                </div>
+              </form>
+            </details>
           </section>
         </div>
 
@@ -653,15 +717,42 @@ export default function DashboardPage() {
             </div>
 
             <div className="mt-5 rounded-lg border border-gray-200 p-4">
-              <h3 className="text-sm font-semibold text-gray-950">Clean file</h3>
+              <h3 className="text-sm font-semibold text-gray-950">Sanitized File</h3>
               {selectedAnalysis.cleanFile ? (
-                <div className="mt-2 text-sm text-gray-700">
-                  <p>
-                    {selectedAnalysis.cleanFile.filename} · {selectedAnalysis.cleanFile.cleaningStatus}
+                <div className="mt-3 space-y-3 text-sm text-gray-700">
+                  <dl className="grid gap-2 sm:grid-cols-3">
+                    <div>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">Filename</dt>
+                      <dd className="mt-1 break-words text-gray-900">{selectedAnalysis.cleanFile.filename}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">Size</dt>
+                      <dd className="mt-1 text-gray-900">{formatBytes(selectedAnalysis.cleanFile.sizeBytes)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">Cleaning status</dt>
+                      <dd className="mt-1 text-gray-900">{selectedAnalysis.cleanFile.cleaningStatus}</dd>
+                    </div>
+                  </dl>
+                  <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    This version has metadata removed. It does NOT guarantee the file is safe.
                   </p>
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="text-xs text-gray-500">
                     Removed metadata: {selectedAnalysis.cleanFile.removedMetadataKeys.length > 0 ? selectedAnalysis.cleanFile.removedMetadataKeys.join(", ") : "none recorded"}
                   </p>
+                  {cleanFileError ? (
+                    <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                      {cleanFileError}
+                    </p>
+                  ) : null}
+                  <button
+                    className="rounded-md bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+                    disabled={downloadingCleanFile || selectedAnalysis.cleanFile.cleaningStatus !== "COMPLETED"}
+                    onClick={downloadCleanFile}
+                    type="button"
+                  >
+                    {downloadingCleanFile ? "Downloading..." : "Download Clean File"}
+                  </button>
                 </div>
               ) : (
                 <p className="mt-2 text-sm text-gray-600">No clean file is available for this analysis.</p>
@@ -699,4 +790,17 @@ function formatMetadataValue(value: unknown) {
     return String(value);
   }
   return JSON.stringify(value);
+}
+
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value < 0) {
+    return "Not recorded";
+  }
+  if (value < 1024) {
+    return `${value} B`;
+  }
+  if (value < 1024 * 1024) {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }

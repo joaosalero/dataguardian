@@ -38,7 +38,6 @@ def test_full_user_flow(page: Page) -> None:
 def run_go_auth_flow(page: Page) -> None:
     test_email = f"e2e-{uuid.uuid4().hex[:8]}@dataguardian.dev"
     test_password = "StrongPass123"
-    project_name = f"E2E Project {uuid.uuid4().hex[:6]}"
 
     log("Opening registration page")
     page.goto(f"{FRONTEND_URL}/register", wait_until="networkidle")
@@ -60,19 +59,7 @@ def run_go_auth_flow(page: Page) -> None:
     expect(page.get_by_text(f"Signed in as {test_email}.")).to_be_visible(
         timeout=10_000
     )
-
-    log("Creating project through dashboard UI")
-    page.get_by_label("Project name").fill(project_name)
-    page.get_by_label("Database target").fill("postgres://e2e-target")
-    with page.expect_response(
-        lambda response: response.url == f"{BACKEND_URL}/projects"
-        and response.request.method == "POST"
-    ) as project_response_info:
-        page.get_by_role("button", name="Create project").click()
-    project_response = project_response_info.value
-    assert_response_ok(project_response, "project creation")
-    page.goto(f"{FRONTEND_URL}/dashboard", wait_until="networkidle")
-    expect(page.get_by_text(project_name).first).to_be_visible(timeout=10_000)
+    expect(page.get_by_text("Default Project").first).to_be_visible(timeout=10_000)
 
     log("Creating file analysis with authenticated browser session")
     pdf_bytes = (
@@ -137,17 +124,18 @@ def run_go_auth_flow(page: Page) -> None:
     expect(page.get_by_text("This PDF contains embedded JavaScript")).to_be_visible()
     expect(page.get_by_text("Mitigation:").first).to_be_visible()
     expect(page.get_by_text("author", exact=True)).to_be_visible()
+    expect(page.get_by_role("heading", name="Sanitized File")).to_be_visible()
+    expect(page.get_by_text("e2e-sample-clean.pdf")).to_be_visible()
+    expect(page.get_by_text("This version has metadata removed. It does NOT guarantee the file is safe.")).to_be_visible()
+    expect(page.get_by_role("button", name="Download Clean File")).to_be_visible()
+    with page.expect_download() as download_info:
+        page.get_by_role("button", name="Download Clean File").click()
+    download = download_info.value
+    assert download.suggested_filename == "e2e-sample-clean.pdf"
     log("FULL E2E USER FLOW PASSED")
 
 
 def assert_ok(response: APIResponse, label: str) -> None:
-    if not response.ok:
-        raise AssertionError(
-            f"{label} request failed with HTTP {response.status}: {response.text()}"
-        )
-
-
-def assert_response_ok(response, label: str) -> None:
     if not response.ok:
         raise AssertionError(
             f"{label} request failed with HTTP {response.status}: {response.text()}"
