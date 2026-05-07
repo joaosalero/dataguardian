@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"html"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +21,7 @@ const (
 	maxURLResponseSize = 2 * 1024 * 1024
 	maxURLRedirects    = 3
 	urlFetchTimeout    = 5 * time.Second
+	maxURLPreviewChars = 2000
 )
 
 var (
@@ -82,6 +85,10 @@ func AnalyzeURL(ctx context.Context, originalURL string) (URLResult, error) {
 			))
 		}
 		findings = append(findings, inspectURLContent(content)...)
+		targetPreview := extractURLPlainTextPreview(content, nullableString(target.ContentType))
+		if targetPreview != "" {
+			target.MetadataPreview = targetPreview
+		}
 	}
 
 	metadata := urlMetadata(0, target)
@@ -98,6 +105,12 @@ func AnalyzeURL(ctx context.Context, originalURL string) (URLResult, error) {
 		Summary:   summary,
 	}, nil
 }
+
+var (
+	scriptOrStyleBlockPattern = regexp.MustCompile(`(?is)<(script|style)[^>]*>.*?</(script|style)>`)
+	htmlTagPattern            = regexp.MustCompile(`(?s)<[^>]+>`)
+	whitespacePattern         = regexp.MustCompile(`[ \t\r\n]+`)
+)
 
 func validateSafeURL(ctx context.Context, raw string) (*url.URL, error) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
@@ -315,20 +328,51 @@ func urlFinding(code string, title string, description string, severity db.Sever
 }
 
 func urlMetadata(analysisID int64, target db.URLTarget) db.Metadata {
+	entries := []db.MetadataEntry{
+		urlMetadataEntry("content_type", nullableString(target.ContentType), "headers"),
+		urlMetadataEntry("content_length_bytes", nullableInt64(target.ContentLengthBytes), "headers"),
+		urlMetadataEntry("host", target.Host, "url"),
+		urlMetadataEntry("protocol", protocolFromURL(target), "url"),
+		urlMetadataEntry("redirect_count", target.RedirectCount, "redirects"),
+		urlMetadataEntry("redirect_chain", target.RedirectChain, "redirects"),
+		urlMetadataEntry("http_status_code", nullableInt(target.HTTPStatusCode), "headers"),
+		urlMetadataEntry("fetch_status", target.FetchStatus, "fetch"),
+	}
+	if strings.TrimSpace(target.MetadataPreview) != "" {
+		entries = append(entries, urlMetadataEntry("safe_preview_text", target.MetadataPreview, "safe_preview"))
+	}
 	return db.Metadata{
 		AnalysisID: analysisID,
 		SourceType: db.MetadataSourceTypeURLContent,
-		Entries: []db.MetadataEntry{
-			urlMetadataEntry("content_type", nullableString(target.ContentType), "headers"),
-			urlMetadataEntry("content_length_bytes", nullableInt64(target.ContentLengthBytes), "headers"),
-			urlMetadataEntry("host", target.Host, "url"),
-			urlMetadataEntry("protocol", protocolFromURL(target), "url"),
-			urlMetadataEntry("redirect_count", target.RedirectCount, "redirects"),
-			urlMetadataEntry("redirect_chain", target.RedirectChain, "redirects"),
-			urlMetadataEntry("http_status_code", nullableInt(target.HTTPStatusCode), "headers"),
-			urlMetadataEntry("fetch_status", target.FetchStatus, "fetch"),
-		},
+		Entries:    entries,
 	}
+}
+
+func extractURLPlainTextPreview(content []byte, contentType any) string {
+	contentTypeText, _ := contentType.(string)
+	lowerType := strings.ToLower(contentTypeText)
+	if lowerType != "" &&
+		!strings.Contains(lowerType, "text/") &&
+		!strings.Contains(lowerType, "application/json") &&
+		!strings.Contains(lowerType, "application/xml") &&
+		!strings.Contains(lowerType, "application/xhtml") {
+		return ""
+	}
+	text := string(content)
+	if strings.Contains(lowerType, "html") || bytes.Contains(bytes.ToLower(content[:min(len(content), 1024)]), []byte("<html")) {
+		text = scriptOrStyleBlockPattern.ReplaceAllString(text, " ")
+		text = htmlTagPattern.ReplaceAllString(text, " ")
+		text = html.UnescapeString(text)
+	}
+	text = whitespacePattern.ReplaceAllString(text, " ")
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	if len(text) > maxURLPreviewChars {
+		text = text[:maxURLPreviewChars] + "..."
+	}
+	return text
 }
 
 func urlMetadataEntry(key string, value any, source string) db.MetadataEntry {

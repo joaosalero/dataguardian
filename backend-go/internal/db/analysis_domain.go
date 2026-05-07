@@ -156,6 +156,7 @@ type URLTarget struct {
 	FetchedAt          *time.Time  `json:"fetched_at"`
 	FetchStatus        FetchStatus `json:"fetch_status"`
 	FailureReason      *string     `json:"failure_reason"`
+	MetadataPreview    string      `json:"metadata_preview"`
 }
 
 // Metadata stores structured metadata extracted during an analysis.

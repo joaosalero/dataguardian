@@ -81,6 +81,9 @@ func TestCreateFileAnalysisUploadSuccess(t *testing.T) {
 	if response.CleanFile == nil || response.CleanFile.CleaningStatus != db.CleaningStatusCompleted {
 		t.Fatalf("expected completed cleanFile, got %#v", response.CleanFile)
 	}
+	if response.SafePreview == nil || !response.SafePreview.Available || response.SafePreview.Kind != "image" {
+		t.Fatalf("expected static safe preview, got %#v", response.SafePreview)
+	}
 	if len(response.Metadata.Entries) == 0 {
 		t.Fatal("expected metadata entries in response")
 	}
@@ -199,6 +202,38 @@ func TestCreateFileAnalysisCleanFileFailureIsRecorded(t *testing.T) {
 	}
 }
 
+func TestCreateTextFileAnalysisReturnsSafePreviewWithoutCleanFile(t *testing.T) {
+	store := newFakeAnalysisStore()
+	srv := &server{
+		cfg:   config.Settings{StorageDir: t.TempDir()},
+		store: store,
+	}
+	body, contentType := multipartAnalysisBody(t, map[string]string{
+		"projectId": "7",
+		"inputType": string(db.InputTypeFile),
+	}, "note.txt", []byte("Suspicious note\nDo not execute anything."))
+	req := httptest.NewRequest(http.MethodPost, "/analyses", body)
+	req.Header.Set("Content-Type", contentType)
+	req = req.WithContext(withUserID(req.Context(), 42))
+	rec := httptest.NewRecorder()
+
+	srv.createAnalysis(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("createAnalysis returned %d with body %s", rec.Code, rec.Body.String())
+	}
+	var response AnalysisResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("response JSON did not decode: %v", err)
+	}
+	if response.CleanFile != nil {
+		t.Fatalf("expected no clean file for text upload, got %#v", response.CleanFile)
+	}
+	if response.SafePreview == nil || !response.SafePreview.Available || !strings.Contains(response.SafePreview.Text, "Suspicious note") {
+		t.Fatalf("expected text safe preview, got %#v", response.SafePreview)
+	}
+}
+
 func TestCreateFileAnalysisRejectsInvalidProjectID(t *testing.T) {
 	srv := &server{
 		cfg:   config.Settings{StorageDir: t.TempDir()},
@@ -239,7 +274,7 @@ func TestCreateFileAnalysisRejectsInvalidFileType(t *testing.T) {
 	body, contentType := multipartAnalysisBody(t, map[string]string{
 		"projectId": "7",
 		"inputType": string(db.InputTypeFile),
-	}, "notes.txt", []byte("plain text is not an allowed upload type"))
+	}, "sample.bin", []byte{0x00, 0x01, 0x02, 0x03, 0x04})
 	req := httptest.NewRequest(http.MethodPost, "/analyses", body)
 	req.Header.Set("Content-Type", contentType)
 	req = req.WithContext(withUserID(req.Context(), 42))
@@ -303,6 +338,14 @@ func TestCreateURLAnalysisSuccess(t *testing.T) {
 						Source:      "url",
 						Confidence:  db.MetadataConfidenceHigh,
 					},
+					{
+						Key:         "safe_preview_text",
+						Value:       "Example preview",
+						Category:    db.MetadataCategoryURL,
+						Sensitivity: db.MetadataSensitivityNonSensitive,
+						Source:      "safe_preview",
+						Confidence:  db.MetadataConfidenceHigh,
+					},
 				},
 			},
 			Findings:  findings,
@@ -335,6 +378,9 @@ func TestCreateURLAnalysisSuccess(t *testing.T) {
 	}
 	if len(response.Findings) != 1 || response.Findings[0].Code != "URL_REDIRECT_DETECTED" {
 		t.Fatalf("expected redirect finding, got %#v", response.Findings)
+	}
+	if response.SafePreview == nil || !response.SafePreview.Available || response.SafePreview.Text != "Example preview" {
+		t.Fatalf("expected URL safe preview, got %#v", response.SafePreview)
 	}
 }
 

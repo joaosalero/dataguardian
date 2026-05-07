@@ -33,7 +33,8 @@ Known limitations:
 ## What DataGuardian Does
 
 DataGuardian lets you sign in, upload a supported file or submit a URL, and get
-a local security-oriented analysis. It shows metadata, deterministic findings,
+a local security-oriented analysis before you decide whether to trust it. It
+shows a static safe preview when possible, metadata, deterministic findings,
 risk score, explanations, and, for supported files, a sanitized copy with some
 metadata removed.
 
@@ -43,6 +44,10 @@ frontend together.
 
 Important sanitized-file warning: a clean file has selected metadata removed.
 It does NOT guarantee that the file is safe, malware-free, or fully disarmed.
+
+Important safe-preview warning: previews are static and read-only. Active file
+content, PDF JavaScript, website JavaScript, DOM behavior, and browser rendering
+are intentionally not executed.
 
 ## Start Here
 
@@ -547,8 +552,10 @@ findings, deterministic explanations, metadata, risk score, and sanitized file
 details when available. The sanitized file panel includes filename, size,
 cleaning status, a required warning that metadata removal does not guarantee
 file safety, and a download button backed by the authenticated clean-file
-download route. The history endpoint is scoped through the signed-in user's
-projects, so users only see analyses attached to projects they own.
+download route. The Safe Preview panel shows a static image or plain-text
+preview when one can be generated without executing active content. The history
+endpoint is scoped through the signed-in user's projects, so users only see
+analyses attached to projects they own.
 
 Analysis responses include an explanation layer for each finding. This layer is
 template-based and deterministic: it explains findings that already exist,
@@ -580,6 +587,8 @@ Supported upload types:
 
 - PDF: `application/pdf`
 - JPEG: `image/jpeg`
+- PNG: `image/png`
+- Plain text: `text/plain`
 
 Current limits and behavior:
 
@@ -600,20 +609,25 @@ Current limits and behavior:
   size is `NON_SENSITIVE`.
 - Metadata findings currently include `METADATA_GPS_EXPOSED`,
   `METADATA_AUTHOR_PRESENT`, and `METADATA_SUSPICIOUS_PRESENT`.
+- Safe Preview supports static JPEG/PNG image previews, plain-text previews,
+  and a first-page PDF static image generated from inert text snippets. It does
+  not embed a PDF viewer or execute PDF actions.
 - Clean file generation creates a sanitized file record for file analyses.
   JPEG sanitization removes EXIF APP1 segments. PDF sanitization removes a
   small set of non-essential literal metadata fields such as author, producer,
   and creation date.
-- `cleanFile` is returned for file analyses when sanitization is recorded.
-  URL analyses still return `cleanFile: null`.
+- `cleanFile` is returned for PDF and JPEG analyses when sanitization is
+  recorded. PNG, text, and URL analyses return `cleanFile: null`.
 - Completed clean files can be downloaded from the analysis details UI or from
   `GET /analyses/{id}/clean-file` with the signed-in user's session cookie.
 
 Security boundary:
 
 - Uploaded files are treated as untrusted binary data.
-- Files are not executed, rendered, opened in viewers, or processed by PDF
+- Files are not executed, opened in active viewers, or processed by browser PDF
   engines.
+- PDF previews are generated as static images only. Embedded PDF JavaScript and
+  actions are not executed.
 - Sanitization is binary-only and removes metadata; it does not execute content
   or add replacement document content.
 - The current clean file feature is lightweight metadata removal, not full
@@ -646,6 +660,9 @@ Current limits and behavior:
   status, and redirect information.
 - Raw response bytes are scanned for base64-like strings, `eval(`, and
   suspicious long encoded strings.
+- Safe Preview extracts a capped plain-text preview from passively fetched
+  bytes. HTML tags, scripts, and styles are stripped as text processing only;
+  the page is never rendered.
 - Clean file generation is not implemented for URL analysis, so `cleanFile` is
   `null`.
 
@@ -659,6 +676,9 @@ URL findings currently include:
 URL security boundary:
 
 - URL inputs are treated as untrusted.
+- URL previews are plain text only. DataGuardian does not execute JavaScript,
+  build an interactive DOM, run headless browser automation, or simulate a user
+  browser.
 - Localhost, loopback IPs, link-local addresses, and private/internal IP ranges
   such as `10.0.0.0/8`, `172.16.0.0/12`, and `192.168.0.0/16` are blocked to
   reduce SSRF risk.

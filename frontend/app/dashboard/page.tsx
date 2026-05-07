@@ -71,6 +71,14 @@ type AnalysisDetail = {
     cleaningStatus: string;
     removedMetadataKeys: string[];
   };
+  safePreview: null | {
+    available: boolean;
+    kind: string;
+    mimeType?: string;
+    dataUrl?: string;
+    text?: string;
+    message?: string;
+  };
 };
 
 async function parseError(response: Response) {
@@ -111,6 +119,10 @@ export default function DashboardPage() {
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectID) ?? null,
     [projects, selectedProjectID],
+  );
+  const visibleMetadataEntries = useMemo(
+    () => selectedAnalysis?.metadata.entries.filter((entry) => entry.key !== "safe_preview_text") ?? [],
+    [selectedAnalysis],
   );
 
   useEffect(() => {
@@ -694,9 +706,9 @@ export default function DashboardPage() {
 
               <div>
                 <h3 className="text-sm font-semibold text-gray-950">Metadata</h3>
-                {selectedAnalysis.metadata.entries.length > 0 ? (
+                {visibleMetadataEntries.length > 0 ? (
                   <dl className="mt-3 divide-y divide-gray-100 rounded-lg border border-gray-200">
-                    {selectedAnalysis.metadata.entries.map((entry) => (
+                    {visibleMetadataEntries.map((entry) => (
                       <div className="grid gap-1 p-3 sm:grid-cols-[150px_1fr]" key={`${entry.key}-${entry.source}`}>
                         <dt className="text-xs font-semibold uppercase text-gray-500">{entry.key}</dt>
                         <dd className="break-words text-sm text-gray-800">
@@ -714,6 +726,38 @@ export default function DashboardPage() {
                   </p>
                 )}
               </div>
+            </div>
+
+            <div className="mt-5 rounded-lg border border-gray-200 p-4">
+              <h3 className="text-sm font-semibold text-gray-950">Safe Preview</h3>
+              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                This preview is rendered in isolated safe mode. Active content is not executed.
+              </p>
+              {selectedAnalysis.riskScore.level === "HIGH" ? (
+                <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  This content may be unsafe. Do not trust or open locally without caution.
+                </p>
+              ) : null}
+              {selectedAnalysis.safePreview?.available ? (
+                <div className="mt-3">
+                  {selectedAnalysis.safePreview.kind === "image" && selectedAnalysis.safePreview.dataUrl ? (
+                    <img
+                      alt="Static safe preview"
+                      className="max-h-[520px] max-w-full rounded-md border border-gray-200 bg-gray-50 object-contain"
+                      src={selectedAnalysis.safePreview.dataUrl}
+                    />
+                  ) : null}
+                  {selectedAnalysis.safePreview.kind === "text" && selectedAnalysis.safePreview.text ? (
+                    <pre className="max-h-80 overflow-auto rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800 whitespace-pre-wrap">
+                      {selectedAnalysis.safePreview.text}
+                    </pre>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="mt-3 rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                  {selectedAnalysis.safePreview?.message ?? "No safe preview is available for this analysis."}
+                </p>
+              )}
             </div>
 
             <div className="mt-5 rounded-lg border border-gray-200 p-4">

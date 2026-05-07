@@ -45,6 +45,7 @@ type AnalysisResponse struct {
 	Metadata      AnalysisMetadata            `json:"metadata"`
 	RiskScore     AnalysisRiskScore           `json:"riskScore"`
 	CleanFile     *AnalysisCleanFileReference `json:"cleanFile"`
+	SafePreview   *AnalysisSafePreview        `json:"safePreview"`
 }
 
 // AnalysisListItem is the compact history row returned by GET /analyses.
@@ -119,4 +120,14 @@ type AnalysisCleanFileReference struct {
 	ChecksumSHA256      string            `json:"checksumSha256"`
 	CleaningStatus      db.CleaningStatus `json:"cleaningStatus"`
 	RemovedMetadataKeys []string          `json:"removedMetadataKeys"`
+}
+
+// AnalysisSafePreview describes a static, non-executing preview generated from untrusted content.
+type AnalysisSafePreview struct {
+	Available bool   `json:"available"`
+	Kind      string `json:"kind"`
+	MimeType  string `json:"mimeType,omitempty"`
+	DataURL   string `json:"dataUrl,omitempty"`
+	Text      string `json:"text,omitempty"`
+	Message   string `json:"message,omitempty"`
 }

@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"html"
 	"io"
 	"mime"
 	"net/http"
@@ -20,6 +22,8 @@ import (
 )
 
 const maxAnalysisFileSize = 10 * 1024 * 1024
+const maxInlinePreviewAssetSize = 1024 * 1024
+const maxTextPreviewBytes = 4096
 
 var analyzeURL = analysis.AnalyzeURL
 
@@ -270,7 +274,8 @@ func (s *server) createFileAnalysis(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, buildFileAnalysisResponse(completed, createdFile, metadata, findings, riskScore, cleanFile))
+	safePreview := safeFilePreview(content, mimeType, originalFilename)
+	writeJSON(w, http.StatusCreated, buildFileAnalysisResponse(completed, createdFile, metadata, findings, riskScore, cleanFile, safePreview))
 }
 
 func (s *server) getAnalysis(w http.ResponseWriter, r *http.Request) {
@@ -300,7 +305,8 @@ func (s *server) getAnalysis(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		writeJSON(w, http.StatusOK, buildFileAnalysisResponse(root, file, metadata, findings, riskScore, cleanFile))
+		safePreview := s.safeFilePreviewFromStoredFile(file)
+		writeJSON(w, http.StatusOK, buildFileAnalysisResponse(root, file, metadata, findings, riskScore, cleanFile, safePreview))
 	case db.InputTypeURL:
 		target, metadata, findings, riskScore, ok := s.loadURLAnalysisParts(w, r, root.ID)
 		if !ok {
@@ -476,7 +482,10 @@ func readLimitedFile(file io.Reader) ([]byte, error) {
 }
 
 func allowedAnalysisMimeType(mimeType string) bool {
-	return mimeType == "application/pdf" || mimeType == "image/jpeg"
+	return mimeType == "application/pdf" ||
+		mimeType == "image/jpeg" ||
+		mimeType == "image/png" ||
+		strings.HasPrefix(mimeType, "text/plain")
 }
 
 func safeOriginalFilename(filename string) string {
@@ -496,7 +505,7 @@ func storeAnalysisFile(storageDir string, checksum string, extension string, con
 	if err != nil {
 		return "", err
 	}
-	if extension != ".pdf" && extension != ".jpg" && extension != ".jpeg" {
+	if extension != ".pdf" && extension != ".jpg" && extension != ".jpeg" && extension != ".png" && extension != ".txt" {
 		extension = ""
 	}
 	path := filepath.Join(storageDir, checksum+"-"+name+extension)
@@ -522,8 +531,129 @@ func storedFilePath(storageDir string, storedReference string) (string, bool) {
 	return cleanPath, true
 }
 
+func (s *server) safeFilePreviewFromStoredFile(file db.File) *AnalysisSafePreview {
+	path, ok := storedFilePath(s.cfg.StorageDir, file.StoredReference)
+	if !ok {
+		return unavailableSafePreview("Preview is unavailable for this stored file.")
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return unavailableSafePreview("Preview content could not be loaded.")
+	}
+	return safeFilePreview(content, file.MimeType, file.OriginalFilename)
+}
+
+func safeFilePreview(content []byte, mimeType string, filename string) *AnalysisSafePreview {
+	switch {
+	case mimeType == "image/jpeg" || mimeType == "image/png":
+		if len(content) > maxInlinePreviewAssetSize {
+			return unavailableSafePreview("Image preview is unavailable because the file is larger than the inline preview limit.")
+		}
+		return &AnalysisSafePreview{
+			Available: true,
+			Kind:      "image",
+			MimeType:  mimeType,
+			DataURL:   "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(content),
+		}
+	case strings.HasPrefix(mimeType, "text/plain"):
+		return &AnalysisSafePreview{
+			Available: true,
+			Kind:      "text",
+			MimeType:  "text/plain; charset=utf-8",
+			Text:      plainTextPreview(content),
+		}
+	case mimeType == "application/pdf":
+		if !strings.HasPrefix(string(content[:min(len(content), 8)]), "%PDF") {
+			return unavailableSafePreview("PDF preview is unavailable because the file is malformed.")
+		}
+		svg := pdfStaticPreviewSVG(filename, plainTextPreview(content))
+		return &AnalysisSafePreview{
+			Available: true,
+			Kind:      "image",
+			MimeType:  "image/svg+xml",
+			DataURL:   "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(svg)),
+		}
+	default:
+		return unavailableSafePreview("Safe preview is not supported for this file type.")
+	}
+}
+
+func plainTextPreview(content []byte) string {
+	if len(content) > maxTextPreviewBytes {
+		content = content[:maxTextPreviewBytes]
+	}
+	var builder strings.Builder
+	for _, r := range string(content) {
+		switch {
+		case r == '\n' || r == '\r' || r == '\t':
+			builder.WriteRune(r)
+		case r >= 32 && r != 127:
+			builder.WriteRune(r)
+		}
+	}
+	text := strings.TrimSpace(builder.String())
+	if text == "" {
+		return "No readable text was found in the safe preview."
+	}
+	return text
+}
+
+func pdfStaticPreviewSVG(filename string, text string) string {
+	lines := previewLines(text, 12, 72)
+	var body strings.Builder
+	y := 116
+	for _, line := range lines {
+		body.WriteString(`<text x="44" y="`)
+		body.WriteString(strconv.Itoa(y))
+		body.WriteString(`" font-size="14" fill="#374151">`)
+		body.WriteString(html.EscapeString(line))
+		body.WriteString(`</text>`)
+		y += 24
+	}
+	if len(lines) == 0 {
+		body.WriteString(`<text x="44" y="116" font-size="14" fill="#6b7280">No readable first-page text was extracted.</text>`)
+	}
+	return `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="840" viewBox="0 0 640 840">` +
+		`<rect width="640" height="840" fill="#f3f4f6"/>` +
+		`<rect x="28" y="28" width="584" height="784" rx="4" fill="#ffffff" stroke="#d1d5db"/>` +
+		`<text x="44" y="70" font-size="20" font-weight="700" fill="#111827">PDF static safe preview</text>` +
+		`<text x="44" y="94" font-size="12" fill="#6b7280">` + html.EscapeString(filename) + `</text>` +
+		body.String() +
+		`<text x="44" y="780" font-size="12" fill="#92400e">Active PDF content is not executed or embedded.</text>` +
+		`</svg>`
+}
+
+func previewLines(text string, maxLines int, maxLen int) []string {
+	lines := make([]string, 0, maxLines)
+	for _, raw := range strings.Split(text, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		if len(line) > maxLen {
+			line = line[:maxLen] + "..."
+		}
+		lines = append(lines, line)
+		if len(lines) == maxLines {
+			break
+		}
+	}
+	return lines
+}
+
+func unavailableSafePreview(message string) *AnalysisSafePreview {
+	return &AnalysisSafePreview{
+		Available: false,
+		Kind:      "unavailable",
+		Message:   message,
+	}
+}
+
 func (s *server) createCleanFile(ctx context.Context, originalFile db.File, originalFilename string, extension string, content []byte, mimeType string) (*db.CleanFile, error) {
 	cleanResult, err := analysis.SanitizeFile(content, mimeType)
+	if errors.Is(err, analysis.ErrUnsupportedFileType) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}

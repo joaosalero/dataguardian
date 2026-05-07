@@ -35,6 +35,7 @@ func buildFileAnalysisResponse(
 	findings []db.Finding,
 	riskScore db.RiskScore,
 	cleanFile *db.CleanFile,
+	safePreview *AnalysisSafePreview,
 ) AnalysisResponse {
 	response := AnalysisResponse{
 		AnalysisID:    analysis.ID,
@@ -53,9 +54,10 @@ func buildFileAnalysisResponse(
 			ChecksumSHA256:   file.ChecksumSHA256,
 			Extension:        file.Extension,
 		},
-		Findings:  analysisFindings(findings),
-		Metadata:  analysisMetadata(metadata),
-		RiskScore: analysisRiskScore(riskScore),
+		Findings:    analysisFindings(findings),
+		Metadata:    analysisMetadata(metadata),
+		RiskScore:   analysisRiskScore(riskScore),
+		SafePreview: safePreview,
 	}
 	if cleanFile != nil {
 		response.CleanFile = &AnalysisCleanFileReference{
@@ -78,6 +80,7 @@ func buildURLAnalysisResponse(
 	findings []db.Finding,
 	riskScore db.RiskScore,
 ) AnalysisResponse {
+	safePreview := safePreviewFromMetadata(metadata)
 	return AnalysisResponse{
 		AnalysisID:    analysis.ID,
 		ProjectID:     analysis.ProjectID,
@@ -101,10 +104,11 @@ func buildURLAnalysisResponse(
 			FetchStatus:        target.FetchStatus,
 			FailureReason:      target.FailureReason,
 		},
-		Findings:  analysisFindings(findings),
-		Metadata:  analysisMetadata(metadata),
-		RiskScore: analysisRiskScore(riskScore),
-		CleanFile: nil,
+		Findings:    analysisFindings(findings),
+		Metadata:    analysisMetadata(metadata),
+		RiskScore:   analysisRiskScore(riskScore),
+		CleanFile:   nil,
+		SafePreview: safePreview,
 	}
 }
 
@@ -155,5 +159,28 @@ func analysisRiskScore(score db.RiskScore) AnalysisRiskScore {
 		Score:   score.Score,
 		Level:   score.Level,
 		Drivers: score.Drivers,
+	}
+}
+
+func safePreviewFromMetadata(metadata db.Metadata) *AnalysisSafePreview {
+	for _, entry := range metadata.Entries {
+		if entry.Key != "safe_preview_text" {
+			continue
+		}
+		text, ok := entry.Value.(string)
+		if !ok || text == "" {
+			break
+		}
+		return &AnalysisSafePreview{
+			Available: true,
+			Kind:      "text",
+			MimeType:  "text/plain; charset=utf-8",
+			Text:      text,
+		}
+	}
+	return &AnalysisSafePreview{
+		Available: false,
+		Kind:      "unavailable",
+		Message:   "No safe preview is available for this analysis.",
 	}
 }
