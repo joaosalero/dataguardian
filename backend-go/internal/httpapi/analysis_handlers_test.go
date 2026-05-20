@@ -252,6 +252,22 @@ func TestDownloadOriginalFileReturnsNotFoundForInvalidStoredReference(t *testing
 	}
 }
 
+func TestStoredFilePathForWriteRejectsUnsafeFilenames(t *testing.T) {
+	storageDir := t.TempDir()
+	path, ok := storedFilePathForWrite(storageDir, "checksum-token.pdf")
+	if !ok {
+		t.Fatal("expected generated filename to be accepted")
+	}
+	if !strings.HasPrefix(filepath.Clean(path), filepath.Clean(storageDir)+string(filepath.Separator)) {
+		t.Fatalf("stored write path escaped storage dir: %s", path)
+	}
+	for _, filename := range []string{"../escape.pdf", "nested/file.pdf", filepath.Join(t.TempDir(), "absolute.pdf"), ""} {
+		if path, ok := storedFilePathForWrite(storageDir, filename); ok {
+			t.Fatalf("expected unsafe filename %q to be rejected, got %s", filename, path)
+		}
+	}
+}
+
 func TestStorageSummaryRequiresAdmin(t *testing.T) {
 	store := newFakeAnalysisStore()
 	srv := &server{cfg: config.Settings{StorageDir: t.TempDir()}, store: store}
@@ -300,12 +316,12 @@ func TestCreateFileAnalysisCleanFileFailureIsRecorded(t *testing.T) {
 	}
 	originalWriteStoredFile := writeStoredFile
 	writeCount := 0
-	writeStoredFile = func(path string, content []byte) error {
+	writeStoredFile = func(storageDir string, filename string, content []byte) error {
 		writeCount++
 		if writeCount == 2 {
 			return errTestStorage
 		}
-		return originalWriteStoredFile(path, content)
+		return originalWriteStoredFile(storageDir, filename, content)
 	}
 	defer func() { writeStoredFile = originalWriteStoredFile }()
 

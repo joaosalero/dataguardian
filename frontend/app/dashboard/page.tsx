@@ -166,6 +166,7 @@ export default function DashboardPage() {
   const [originalFileError, setOriginalFileError] = useState("");
   const [cleanFileError, setCleanFileError] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
+  const [previewImageFailed, setPreviewImageFailed] = useState(false);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectID) ?? null,
@@ -229,6 +230,10 @@ export default function DashboardPage() {
 
     loadDashboard();
   }, [router]);
+
+  useEffect(() => {
+    setPreviewImageFailed(false);
+  }, [selectedAnalysis?.analysisId, selectedAnalysis?.safePreview?.kind, selectedAnalysis?.safePreview?.dataUrl]);
 
   async function apiFetch(path: string, init?: RequestInit) {
     return fetch(`${API_BASE_URL}${path}`, {
@@ -440,10 +445,7 @@ export default function DashboardPage() {
       setOriginalFileError("No original file is available for this analysis.");
       return;
     }
-    if (
-      selectedAnalysis.riskScore.level === "HIGH" &&
-      !window.confirm("This file is high risk. Download the original file anyway?")
-    ) {
+    if (selectedAnalysis.riskScore.level === "HIGH" && !confirmHighRiskOriginalDownload(selectedAnalysis)) {
       return;
     }
     setOriginalFileError("");
@@ -1019,9 +1021,18 @@ export default function DashboardPage() {
               </span>
             </div>
 
+            <ol className="mt-5 grid gap-2 text-xs font-semibold uppercase text-gray-500 sm:grid-cols-5">
+              {["Inspect", "Review Risk", "Review Findings", "Review Preview", "Decide Download"].map((step, index) => (
+                <li className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2" key={step}>
+                  <span className="mr-2 text-gray-400">{index + 1}</span>
+                  {step}
+                </li>
+              ))}
+            </ol>
+
             <div className="mt-5 grid gap-5 lg:grid-cols-2">
               <div>
-                <h3 className="text-sm font-semibold text-gray-950">Findings</h3>
+                <h3 className="text-sm font-semibold text-gray-950">Review Findings</h3>
                 {selectedAnalysis.findings.length > 0 ? (
                   <div className="mt-3 space-y-3">
                     {selectedAnalysis.findings.map((finding) => (
@@ -1051,7 +1062,7 @@ export default function DashboardPage() {
               </div>
 
               <div>
-                <h3 className="text-sm font-semibold text-gray-950">Metadata</h3>
+                <h3 className="text-sm font-semibold text-gray-950">Review Metadata</h3>
                 {visibleMetadataEntries.length > 0 ? (
                   <dl className="mt-3 divide-y divide-gray-100 rounded-lg border border-gray-200">
                     {visibleMetadataEntries.map((entry) => (
@@ -1081,7 +1092,7 @@ export default function DashboardPage() {
             ) : null}
 
             {selectedAnalysis.inputType === "URL" && selectedAnalysis.file ? (
-              <div className="mt-5 rounded-lg border border-gray-200 p-4">
+              <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50/40 p-4">
                 <h3 className="text-sm font-semibold text-gray-950">Remote File Inspection</h3>
                 <div className="mt-3 space-y-3 text-sm text-gray-700">
                   <dl className="grid gap-2 sm:grid-cols-3">
@@ -1103,21 +1114,22 @@ export default function DashboardPage() {
                     </div>
                   </dl>
                   <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                    This remote file was fetched by the backend and inspected before any local download.
+                    This remote file was fetched into the backend inspection environment and inspected before any local download. This reduces direct exposure, but it does not guarantee malware detection.
                   </p>
                   {selectedAnalysis.riskScore.level === "HIGH" ? (
                     <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                      High risk: review findings carefully before downloading the original remote file.
+                      High risk: this original remote file may still contain unsafe content. Review findings carefully before choosing to download it locally.
                     </p>
                   ) : null}
                 </div>
               </div>
             ) : null}
 
-            <div className="mt-5 rounded-lg border border-gray-200 p-4">
+            <div className={`mt-5 rounded-lg border p-4 ${selectedAnalysis.riskScore.level === "HIGH" ? "border-red-200 bg-red-50/30" : "border-amber-200 bg-amber-50/30"}`}>
               <h3 className="text-sm font-semibold text-gray-950">
                 {originalFileHeading(selectedAnalysis)}
               </h3>
+              <p className="mt-1 text-xs font-semibold uppercase text-gray-500">Potentially unsafe original</p>
               {selectedAnalysis.file ? (
                 <div className="mt-3 space-y-3 text-sm text-gray-700">
                   <dl className="grid gap-2 sm:grid-cols-3">
@@ -1147,7 +1159,11 @@ export default function DashboardPage() {
                     </p>
                   ) : null}
                   <button
-                    className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className={`rounded-md px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 ${
+                      selectedAnalysis.riskScore.level === "HIGH"
+                        ? "border border-red-700 bg-red-700 text-white hover:bg-red-800"
+                        : "border border-gray-300 bg-white text-gray-800 hover:bg-gray-50"
+                    }`}
                     disabled={downloadingOriginalFile || !selectedAnalysis.file}
                     onClick={downloadOriginalFile}
                     type="button"
@@ -1163,10 +1179,15 @@ export default function DashboardPage() {
             </div>
 
             <div className="mt-5 rounded-lg border border-gray-200 p-4">
-              <h3 className="text-sm font-semibold text-gray-950">Safe Preview</h3>
+              <h3 className="text-sm font-semibold text-gray-950">Review Preview</h3>
               <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                This preview is rendered in isolated safe mode. Active content is not executed.
+                This preview is static and passive. Active file content, website JavaScript, and browser behavior are not executed.
               </p>
+              {selectedAnalysis.inputType === "URL" ? (
+                <p className="mt-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                  Remote content was inspected in the backend environment before any local download, reducing direct exposure while keeping the final download decision with you.
+                </p>
+              ) : null}
               {selectedAnalysis.riskScore.level === "HIGH" ? (
                 <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                   This content may be unsafe. Do not trust or open locally without caution.
@@ -1174,10 +1195,11 @@ export default function DashboardPage() {
               ) : null}
               {selectedAnalysis.safePreview?.available ? (
                 <div className="mt-3">
-                  {selectedAnalysis.safePreview.kind === "image" && selectedAnalysis.safePreview.dataUrl ? (
+                  {selectedAnalysis.safePreview.kind === "image" && selectedAnalysis.safePreview.dataUrl && !previewImageFailed ? (
                     <img
                       alt="Static safe preview"
                       className="max-h-[520px] max-w-full rounded-md border border-gray-200 bg-gray-50 object-contain"
+                      onError={() => setPreviewImageFailed(true)}
                       src={selectedAnalysis.safePreview.dataUrl}
                     />
                   ) : null}
@@ -1186,16 +1208,18 @@ export default function DashboardPage() {
                       {selectedAnalysis.safePreview.text}
                     </pre>
                   ) : null}
+                  {previewShouldShowFallback(selectedAnalysis, previewImageFailed) ? (
+                    <SafePreviewFallback message={safePreviewFallbackMessage(selectedAnalysis, previewImageFailed)} />
+                  ) : null}
                 </div>
               ) : (
-                <p className="mt-3 rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
-                  {selectedAnalysis.safePreview?.message ?? "No safe preview is available for this analysis."}
-                </p>
+                <SafePreviewFallback message={safePreviewFallbackMessage(selectedAnalysis, previewImageFailed)} />
               )}
             </div>
 
-            <div className="mt-5 rounded-lg border border-gray-200 p-4">
+            <div className="mt-5 rounded-lg border border-sky-200 bg-sky-50/30 p-4">
               <h3 className="text-sm font-semibold text-gray-950">Sanitized File</h3>
+              <p className="mt-1 text-xs font-semibold uppercase text-gray-500">Metadata-cleaned copy only</p>
               {selectedAnalysis.cleanFile ? (
                 <div className="mt-3 space-y-3 text-sm text-gray-700">
                   <dl className="grid gap-2 sm:grid-cols-3">
@@ -1213,7 +1237,7 @@ export default function DashboardPage() {
                     </div>
                   </dl>
                   <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                    This is a separate metadata-cleaned copy. It may still contain unsafe content and does not guarantee malware removal.
+                    This is a separate metadata-cleaned copy. It may still contain unsafe content and does not guarantee malware removal or full safety.
                   </p>
                   <div>
                     <p className="text-xs font-semibold uppercase text-gray-500">Metadata removed</p>
@@ -1312,9 +1336,58 @@ function originalFileSource(analysis: AnalysisDetail) {
 function originalFileWarning(analysis: AnalysisDetail) {
   const source = analysis.inputType === "URL" ? "remote file" : "uploaded file";
   if (analysis.riskScore.level === "HIGH") {
-    return `High risk: this original ${source} is preserved unchanged. Review findings before downloading or opening it locally.`;
+    return `High risk: this original ${source} is preserved unchanged and may still contain unsafe content. DataGuardian reduces exposure with passive inspection, but it does not guarantee malware detection.`;
+  }
+  if (analysis.inputType === "URL") {
+    return "This original remote file was inspected before local download and is preserved unchanged. Review the preview, findings, and risk score before downloading or opening it locally.";
   }
   return `This original ${source} is preserved unchanged. Review the preview, findings, and risk score before downloading or opening it locally.`;
+}
+
+function previewShouldShowFallback(analysis: AnalysisDetail, imageFailed: boolean) {
+  const preview = analysis.safePreview;
+  if (!preview?.available) {
+    return true;
+  }
+  if (preview.kind === "image") {
+    return imageFailed || !preview.dataUrl;
+  }
+  if (preview.kind === "text") {
+    return !preview.text?.trim();
+  }
+  return true;
+}
+
+function safePreviewFallbackMessage(analysis: AnalysisDetail, imageFailed: boolean) {
+  if (imageFailed) {
+    return "Safe preview could not be displayed. The file was still inspected passively; review findings and metadata before deciding whether to download.";
+  }
+  return analysis.safePreview?.message ?? "Preview unavailable for this content. Review findings, metadata, and risk before deciding whether to download.";
+}
+
+function SafePreviewFallback({ message }: { message: string }) {
+  return (
+    <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 px-4 py-5 text-sm text-gray-700">
+      <p className="font-semibold text-gray-900">Preview unavailable</p>
+      <p className="mt-1">{message}</p>
+      <p className="mt-2 text-xs text-gray-500">
+        DataGuardian does not execute active content to generate previews.
+      </p>
+    </div>
+  );
+}
+
+function confirmHighRiskOriginalDownload(analysis: AnalysisDetail) {
+  const source = analysis.inputType === "URL" ? "remote file" : "uploaded file";
+  const inspectedNote =
+    analysis.inputType === "URL"
+      ? "It was inspected in the backend before local download, reducing direct exposure, but malware detection is not guaranteed."
+      : "It was inspected passively, but malware detection is not guaranteed.";
+  const expected = "DOWNLOAD ORIGINAL";
+  const response = window.prompt(
+    `High-risk original ${source}. ${inspectedNote} Type ${expected} to download the unchanged original file.`,
+  );
+  return response === expected;
 }
 
 function describeRemovedMetadata(keys: string[]) {
