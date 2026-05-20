@@ -44,6 +44,7 @@ need curl
 
 log "checking required release files"
 check_file README.md
+check_file START-HERE.txt
 check_file CHANGELOG.md
 check_file BACKLOG.md
 check_file SECURITY.md

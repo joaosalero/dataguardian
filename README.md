@@ -80,10 +80,14 @@ use the package manager for your operating system.
 
 ### Beginner Start
 
-After cloning or downloading the repository, use the launcher for your system.
-It checks Docker, runs the normal Docker Compose startup commands, waits for
-readiness, and shows the local app URL. It does not install system services,
-change system settings, or replace Docker as the runtime.
+After cloning or downloading the repository, start with `START-HERE.txt` if you
+want the shortest path. If you downloaded a ZIP, extract it first; do not run
+the launchers from inside the compressed ZIP viewer.
+
+Use the launcher for your system. It checks Docker, runs the normal Docker
+Compose startup commands, waits for readiness, and shows the local app URL. It
+does not install system services, change system settings, or replace Docker as
+the runtime.
 
 Windows:
 
@@ -115,6 +119,11 @@ frontend images.
 
 The launchers ask before opening your browser. If you prefer full manual
 control, use the Docker command below instead.
+
+For portable ZIP downloads, keep the launcher files in the project folder.
+Beginner-facing files are `START-HERE.txt`, `start-dataguardian.bat`,
+`start-dataguardian.sh`, and `README.md`. Runtime and source folders such as
+`backend-go/`, `frontend/`, `scripts/`, and `security/` should be left in place.
 
 ### Docker Command Start
 
@@ -281,6 +290,14 @@ and stored analysis files:
 ```bash
 docker compose down -v
 ```
+
+### Portable Release Notes
+
+A future downloadable ZIP should keep the repository layout intact and include
+the root launcher files, `START-HERE.txt`, `README.md`, `docker-compose.yml`,
+`backend-go/`, `frontend/`, `scripts/`, and `security/`. It should not include
+local runtime state such as `.env`, `.venv/`, `node_modules/`, `.logs/`, Docker
+volumes, or build caches.
 
 ### Dashboard Walkthrough
 

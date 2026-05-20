@@ -52,6 +52,8 @@ open_browser_if_requested() {
 cd "$ROOT_DIR"
 
 log "Starting DataGuardian"
+log "If you downloaded a ZIP, make sure it was extracted first."
+log "Keep this launcher in the DataGuardian folder."
 log "This helper only runs Docker Compose commands in this folder."
 log "It does not install services or change system settings."
 log "This may take a few minutes the first time while Docker builds images."
@@ -60,6 +62,7 @@ if ! command -v docker >/dev/null 2>&1; then
   log "Docker was not found."
   log "Install Docker Desktop, then run this launcher again:"
   log "https://docs.docker.com/get-docker/"
+  log "For beginner help, open START-HERE.txt."
   exit 1
 fi
 
@@ -67,6 +70,7 @@ if ! docker info >/dev/null 2>&1; then
   log "Docker is installed, but the Docker daemon is not reachable."
   log "Start Docker Desktop or the Docker service yourself, wait until it is running, then rerun this launcher."
   log "No Docker process was started by this helper."
+  log "For beginner help, open START-HERE.txt."
   exit 1
 fi
 
@@ -80,3 +84,4 @@ open_browser_if_requested
 log "DataGuardian started correctly."
 log "App: $APP_URL"
 log "Demo users: admin / admin123 or test / test123"
+log "Help: START-HERE.txt or README.md"
