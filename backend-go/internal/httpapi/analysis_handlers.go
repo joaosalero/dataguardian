@@ -876,14 +876,14 @@ func storeAnalysisFile(storageDir string, checksum string, extension string, con
 }
 
 func storedFilePathForWrite(storageDir string, filename string) (string, bool) {
-	if strings.TrimSpace(filename) == "" || filepath.Base(filename) != filename {
+	if !validStoredFilename(filename) {
 		return "", false
 	}
-	storageRoot, err := filepath.Abs(storageDir)
+	storageRoot, err := canonicalStorageRoot(storageDir)
 	if err != nil {
 		return "", false
 	}
-	cleanPath, err := filepath.Abs(filepath.Join(storageRoot, filename))
+	cleanPath, err := filepath.Abs(filepath.Join(storageRoot, filepath.Clean(filename)))
 	if err != nil {
 		return "", false
 	}
@@ -895,11 +895,15 @@ func storedFilePathForWrite(storageDir string, filename string) (string, bool) {
 }
 
 func storedFilePath(storageDir string, storedReference string) (string, bool) {
-	storageRoot, err := filepath.Abs(storageDir)
+	storageRoot, err := canonicalStorageRoot(storageDir)
 	if err != nil {
 		return "", false
 	}
-	cleanPath, err := filepath.Abs(storedReference)
+	cleanReference := filepath.Clean(strings.TrimSpace(storedReference))
+	if cleanReference == "." || !filepath.IsAbs(cleanReference) {
+		return "", false
+	}
+	cleanPath, err := filepath.Abs(cleanReference)
 	if err != nil {
 		return "", false
 	}
@@ -907,7 +911,31 @@ func storedFilePath(storageDir string, storedReference string) (string, bool) {
 	if err != nil || relative == "." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || relative == ".." {
 		return "", false
 	}
+	if filepath.Dir(cleanPath) != storageRoot {
+		return "", false
+	}
+	if !validStoredFilename(filepath.Base(cleanPath)) {
+		return "", false
+	}
 	return cleanPath, true
+}
+
+func canonicalStorageRoot(storageDir string) (string, error) {
+	if strings.TrimSpace(storageDir) == "" {
+		return "", errors.New("invalid storage root")
+	}
+	return filepath.Abs(filepath.Clean(storageDir))
+}
+
+func validStoredFilename(filename string) bool {
+	filename = strings.TrimSpace(filename)
+	if filename == "" || filename == "." || filename == ".." {
+		return false
+	}
+	if filepath.IsAbs(filename) || filepath.Clean(filename) != filename || filepath.Base(filename) != filename {
+		return false
+	}
+	return !strings.ContainsAny(filename, `/\`)
 }
 
 func (s *server) safeFilePreviewFromStoredFile(file db.File) *AnalysisSafePreview {
@@ -1107,12 +1135,22 @@ func saveFailedCleanFile(ctx context.Context, store dataStore, originalFile db.F
 }
 
 func cleanFilename(original string) string {
-	extension := filepath.Ext(original)
-	base := strings.TrimSuffix(original, extension)
+	filename := safeOriginalFilename(original)
+	base, extension := splitCleanFilenameExtension(filename)
 	if strings.TrimSpace(base) == "" {
 		base = "clean-file"
 	}
 	return base + "-clean" + extension
+}
+
+func splitCleanFilenameExtension(filename string) (string, string) {
+	lowerFilename := strings.ToLower(filename)
+	for _, extension := range []string{".jpeg", ".pdf", ".jpg", ".png", ".txt"} {
+		if strings.HasSuffix(lowerFilename, extension) && len(filename) > len(extension) {
+			return filename[:len(filename)-len(extension)], filename[len(filename)-len(extension):]
+		}
+	}
+	return filename, ""
 }
 
 var ensureStorageDir = func(storageDir string) error {

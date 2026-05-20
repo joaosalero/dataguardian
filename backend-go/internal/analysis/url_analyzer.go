@@ -306,15 +306,11 @@ func fetchURL(ctx context.Context, start *url.URL, target db.URLTarget) (db.URLT
 	current := start
 
 	for redirects := 0; ; redirects++ {
-		validatedCurrent, err := validateSafeURL(ctx, current.String())
+		req, validatedCurrent, err := safeURLRequest(ctx, http.MethodGet, current)
 		if err != nil {
 			return target, nil, err
 		}
 		current = validatedCurrent
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, current.String(), nil)
-		if err != nil {
-			return target, nil, ErrInvalidURL
-		}
 		resp, err := client.Do(req)
 		if err != nil {
 			return target, nil, err
@@ -360,6 +356,30 @@ func fetchURL(ctx context.Context, start *url.URL, target db.URLTarget) (db.URLT
 		target.FetchedAt = &now
 		return target, content, nil
 	}
+}
+
+func safeURLRequest(ctx context.Context, method string, candidate *url.URL) (*http.Request, *url.URL, error) {
+	if candidate == nil {
+		return nil, nil, ErrInvalidURL
+	}
+	validated, err := validateSafeURL(ctx, candidate.String())
+	if err != nil {
+		return nil, nil, err
+	}
+	if ips, err := resolveSafeHost(ctx, validated.Hostname()); err != nil {
+		return nil, nil, err
+	} else if len(ips) == 0 {
+		return nil, nil, ErrInvalidURL
+	}
+	requestURL := *validated
+	requestURL.User = nil
+	requestURL.Fragment = ""
+	req := (&http.Request{
+		Method: method,
+		URL:    &requestURL,
+		Header: make(http.Header),
+	}).WithContext(ctx)
+	return req, &requestURL, nil
 }
 
 func safeURLTransport(ctx context.Context) http.RoundTripper {
