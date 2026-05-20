@@ -73,6 +73,12 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v curl >/dev/null 2>&1; then
+  log "curl is required for readiness checks in this helper script."
+  log "Install curl, or use: docker compose up --build"
+  exit 1
+fi
+
 if port_in_use "$BACKEND_PORT" && ! http_ok "http://localhost:$BACKEND_PORT/health"; then
   log "backend port $BACKEND_PORT is already in use, but health check failed."
   log "Run ./scripts/doctor.sh to inspect the process."
@@ -86,10 +92,13 @@ if port_in_use "$FRONTEND_PORT" && ! http_ok "http://localhost:$FRONTEND_PORT/lo
 fi
 
 log "starting Docker Compose services: db backend-go frontend"
-compose up -d db backend-go
-compose up -d --force-recreate frontend
+compose up -d --build db backend-go
+compose up -d --build --force-recreate frontend
 
 wait_for_http "backend" "http://localhost:$BACKEND_PORT/health" 45
 wait_for_http "frontend" "http://localhost:$FRONTEND_PORT/login" 60
 
 log "system ready"
+log "open app: http://localhost:$FRONTEND_PORT"
+log "backend health: http://localhost:$BACKEND_PORT/health"
+log "local demo users: admin / admin123 or test / test123"

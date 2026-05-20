@@ -100,6 +100,14 @@ require_docker() {
   fi
 }
 
+require_curl() {
+  if ! command -v curl >/dev/null 2>&1; then
+    log "curl is required for readiness checks in this helper script"
+    log "Install curl, or use: docker compose up --build"
+    exit 1
+  fi
+}
+
 wait_for_url() {
   local url="$1"
   local label="$2"
@@ -132,14 +140,26 @@ warn_pytest_missing() {
   log "[WARN] pytest not found. Skipping E2E tests."
 }
 
+print_ready_summary() {
+  log "DataGuardian is ready"
+  log "Open app: http://localhost:3000"
+  log "Backend health: http://localhost:8000/health"
+  log "Local demo users: admin / admin123 or test / test123"
+}
+
+run_go_tests() {
+  compose run --rm backend-go-test go test ./...
+}
+
 start_services() {
   require_docker
+  require_curl
   require_port_available_or_dataguardian 8000 "http://localhost:8000/health" "Backend" || true
   require_port_available_or_dataguardian 3000 "http://localhost:3000/login" "Frontend" || true
 
   log "Starting Docker Compose services: db backend-go frontend"
-  compose up -d db backend-go
-  compose up -d --force-recreate frontend
+  compose up -d --build db backend-go
+  compose up -d --build --force-recreate frontend
 
   for _ in $(seq 1 30); do
     if compose exec -T db pg_isready -U dataguardian -d dataguardian >/dev/null 2>&1; then
@@ -155,11 +175,11 @@ start_services() {
 
   wait_for_url "http://localhost:8000/health" "Backend"
   wait_for_url "http://localhost:3000/login" "Frontend"
+  print_ready_summary
 }
 
 manual_mode() {
   start_services
-  log "Manual mode ready"
   log "Backend: Go"
   log "Backend log: docker compose logs -f backend-go"
   log "Frontend log: docker compose logs -f frontend"
@@ -175,10 +195,7 @@ auto_mode() {
   log "Running audit"
   "$ROOT_DIR/security/audit.sh"
   log "Running Go backend tests"
-  (
-    cd "$ROOT_DIR/backend-go"
-    go test ./...
-  )
+  run_go_tests
   log "Running E2E tests"
   if pytest_path="$(pytest_bin)"; then
     if [ "$VISUAL" = "--visual" ]; then

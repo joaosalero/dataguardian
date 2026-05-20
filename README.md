@@ -1,87 +1,377 @@
 # DataGuardian
 
-DataGuardian is a local-first security auditing and authentication demo built as a real engineering portfolio project. It shows a complete product slice: a Go API, a Next.js UI, PostgreSQL, Docker Compose orchestration, browser E2E tests, security checks, and CI.
+![CI](https://github.com/joaosalero/dataguardian/actions/workflows/ci.yml/badge.svg)
+![Dependabot](https://img.shields.io/badge/dependabot-enabled-brightgreen)
+![Go](https://img.shields.io/badge/go-1.25-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-The current application focuses on stable authentication and project readiness after a Python-to-Go backend migration. The historical Python backend is isolated under `backend-legacy-python/` for reference only. It is not executed by Docker, `start.sh`, CI, or any active runtime script.
+DataGuardian is a local-first security inspection platform for suspicious files
+and URLs. It is built to answer a practical question: how do you let a user
+inspect untrusted content before deciding whether to download or open it?
 
-## What It Solves
+The current release focuses on the production foundations that matter first:
+secure authentication, deterministic local execution, automated validation,
+dependency hygiene, and a clear path from developer laptop to CI.
 
-DataGuardian is intended to become a database security review tool. In its current version it provides the stable foundation needed before expanding the product:
+## Project Status
 
-- Register and sign in users securely.
-- Store users in PostgreSQL.
-- Use HttpOnly RS256 JWT session cookies.
-- Run the same local stack through deterministic scripts.
-- Validate behavior with Go tests, Playwright E2E tests, security scripts, and CI.
+MVP stable (under active development)
 
-This repository is intentionally scoped. Multi-tenant SaaS behavior, RBAC, audit trails, billing, and cloud deployment are future phases, not partially implemented features.
+Core features are functional:
+- File analysis (PDF, images)
+- URL analysis (safe remote inspection)
+- Metadata extraction and classification
+- Deterministic findings and risk scoring
+- Metadata-cleaned sanitized file generation and authenticated download
 
-## Architecture
+Known limitations:
+- Sanitized files remove selected metadata only; they are not a malware removal
+  or full content-disarm guarantee.
+- Stored analysis files remain available for history and downloads. Startup
+  cleanup removes only old unreferenced storage files.
 
-Active runtime:
+## What DataGuardian Does
 
-- Backend: Go 1.22+, `net/http`, `pgx`, Argon2id password hashing, RS256 JWTs.
-- Frontend: Next.js, React, TypeScript, Tailwind CSS.
-- Database: PostgreSQL 15 through Docker Compose.
-- Orchestration: `start.sh`, `scripts/up.sh`, Docker Compose.
-- Tests: Go tests and Playwright E2E tests through pytest tooling.
-- Security automation: npm audit, repository secret scan, runtime exposure audit.
-- CI/CD: GitHub Actions.
+DataGuardian lets you sign in, upload a supported file or submit a URL, and get
+a local security-oriented analysis before you decide whether to trust it. It
+shows a static safe preview when possible, metadata, deterministic findings,
+risk score, explanations, and, for supported files, a sanitized copy with some
+metadata removed.
 
-Docker Compose starts exactly these services:
+DataGuardian is Docker-first. You do not need to install Go, Node.js, or
+PostgreSQL just to try the app. Docker starts the database, backend, and
+frontend together.
 
-```text
-db
-backend-go
-frontend
+Important sanitized-file warning: a sanitized copy has selected metadata
+removed. It does NOT guarantee that the file is safe, malware-free, or fully
+disarmed.
+
+Important safe-preview warning: previews are static and read-only. Active file
+content, PDF JavaScript, website JavaScript, DOM behavior, and browser rendering
+are intentionally not executed.
+
+## Release Readiness Notes
+
+Supported uploads: PDF, JPEG, PNG, and plain text up to 10 MB.
+Supported safe previews: static JPEG/PNG images, plain text, and static PDF
+image previews. URL inspection is passive HTTP/HTTPS fetching only.
+
+DataGuardian stores original and sanitized analysis files so authenticated users
+can revisit results and download artifacts. On backend startup, unreferenced
+files older than `STORAGE_ORPHAN_RETENTION_HOURS` are removed; the default is
+24 hours. Set it to `0` to disable orphan cleanup. Referenced analysis artifacts
+remain available until the signed-in owner deletes the analysis.
+Docker keeps PostgreSQL data and stored analysis files in named volumes. Use
+`docker compose down -v` only when you intentionally want to remove that local
+state.
+
+## Start Here
+
+### Requirements
+
+- Docker with Docker Compose.
+- Git, so you can run `git clone`.
+- A terminal app.
+- A web browser.
+- Optional helper scripts and smoke validation also need `curl`.
+
+If `git` is not installed, install it from <https://git-scm.com/downloads> or
+use the package manager for your operating system.
+
+### One-Command Start
+
+After cloning the repository, start everything with:
+
+```bash
+docker compose up --build
 ```
 
-The Go backend is the only active backend runtime and source of truth.
+When the services finish starting, open:
 
-## Requirements
+```text
+http://localhost:3000
+```
 
-For normal local use:
+Docker starts PostgreSQL, the Go backend, and the Next.js frontend together.
+No Go, Node.js, Python, or PostgreSQL install is required for normal use.
 
-- Docker and Docker Compose.
+### Linux Users
 
-For development and automated testing:
+1. Install Docker.
+   - Docker Desktop for Linux: <https://docs.docker.com/desktop/setup/install/linux/>
+   - Docker Engine for Linux: <https://docs.docker.com/engine/install/>
+2. Open a terminal.
+   - Ubuntu/GNOME: press `Ctrl` + `Alt` + `T`.
+   - Or open the app menu and search for `Terminal`.
+3. Clone the repository:
 
-- Go 1.22 or newer.
-- Node.js 20 and npm.
-- Python 3.12 only if you want optional pytest/Playwright E2E testing.
+```bash
+git clone https://github.com/joaosalero/dataguardian.git
+cd dataguardian
+```
 
-Python is not required for core functionality and is not used as a backend runtime.
+4. Start DataGuardian:
 
-## Setup
+```bash
+docker compose up --build
+```
 
-Install local frontend dependencies:
+5. Open the app in your browser:
+
+```text
+http://localhost:3000
+```
+
+6. Stop DataGuardian when finished:
+
+```bash
+docker compose down
+```
+
+### Windows Users
+
+1. Install Docker Desktop for Windows:
+   <https://docs.docker.com/desktop/setup/install/windows-install/>
+2. Start Docker Desktop from the Start menu and wait until it says Docker is
+   running.
+3. Open a terminal.
+   - Press `Windows`, type `PowerShell`, and open Windows PowerShell.
+   - Git Bash also works if you installed Git for Windows.
+4. Clone the repository:
+
+```powershell
+git clone https://github.com/joaosalero/dataguardian.git
+cd dataguardian
+```
+
+5. Start DataGuardian:
+
+```powershell
+docker compose up --build
+```
+
+6. Open the app in your browser:
+
+```text
+http://localhost:3000
+```
+
+7. Stop DataGuardian when finished:
+
+```powershell
+docker compose down
+```
+
+### macOS Users
+
+1. Install Docker Desktop for Mac:
+   <https://docs.docker.com/desktop/setup/install/mac-install/>
+2. Start Docker Desktop from Applications and wait until Docker is running.
+3. Open a terminal.
+   - Press `Command` + `Space`, type `Terminal`, and press `Enter`.
+4. Clone the repository:
+
+```bash
+git clone https://github.com/joaosalero/dataguardian.git
+cd dataguardian
+```
+
+5. Start DataGuardian:
+
+```bash
+docker compose up --build
+```
+
+6. Open the app in your browser:
+
+```text
+http://localhost:3000
+```
+
+7. Stop DataGuardian when finished:
+
+```bash
+docker compose down
+```
+
+The optional helper script also works on Linux and macOS:
+
+```bash
+./start.sh manual
+```
+
+It prints service readiness, the app URL, backend health URL, and local demo
+users before following backend/frontend logs. It requires `curl`; if `curl` is
+not installed, use `docker compose up --build` directly.
+
+After startup, run the release smoke check:
+
+```bash
+./scripts/smoke.sh
+```
+
+On Windows, run the same command from Git Bash, or use the Docker and browser
+checks listed below from PowerShell.
+
+### Dashboard Walkthrough
+
+1. Open `http://localhost:3000`.
+2. Create an account, or sign in with a local demo user:
+
+```text
+admin / admin123
+test  / test123
+```
+
+3. The dashboard creates a default project automatically if you do not have
+   one.
+4. To analyze a file, choose a PDF or JPEG in `Analysis file`, then select
+   `Analyze File`.
+5. To analyze a URL, type an `http` or `https` URL, then select `Analyze URL`.
+6. Open `Analysis history` and select `View` to inspect findings, metadata,
+   explanations, risk score, and sanitized-file details.
+7. Use `Download Original` only after reviewing the warning and findings. If a
+   sanitized file is available, use `Download Sanitized Copy` for the
+   metadata-cleaned copy. Sanitized copies are not malware removal.
+
+### Screenshots
+
+Screenshots are planned for the public README:
+
+- Login and registration
+- Dashboard and analysis history
+- Safe preview and findings
+- Original vs sanitized download panels
+
+### Tests For Users
+
+Run the main automated checks:
+
+```bash
+./run-tests.sh
+```
+
+Run the Docker health validation:
+
+```bash
+docker compose up --build validation
+```
+
+Install optional browser test tooling:
 
 ```bash
 ./scripts/install.sh
 ```
 
-This installs optional pytest tooling into `.venv/` and installs frontend dependencies. The application itself still runs without Python or `.venv/`; pytest is only used for optional E2E checks. `.venv/`, `node_modules/`, `.next/`, logs, caches, local databases, and `.env` files are ignored by Git. Docker Compose keeps the container's `node_modules` and `.next` output in Docker volumes so container dev mode does not overwrite host build artifacts.
-
-Optional local `.env`:
-
-```env
-APP_NAME=DataGuardian
-ENVIRONMENT=dev
-DEBUG=true
-DATABASE_URL=postgresql://dataguardian:dataguardian@localhost:5434/dataguardian
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-```
-
-Do not commit `.env` files, JWT keys, tokens, credentials, or production database URLs.
-
-## Usage Modes
-
-### 1. Normal Local Use
-
-Start the application:
+Run browser E2E tests after the app is running:
 
 ```bash
-./start.sh manual
+.venv/bin/pytest tests/e2e/test_full_flow.py
+```
+
+Run the visual browser E2E test:
+
+```bash
+.venv/bin/pytest tests/e2e/test_full_flow.py -s --headed --slowmo 300
+```
+
+## Product Perspective
+
+DataGuardian is aimed at engineers, security-minded teams, and technical
+reviewers who need confidence that a system handling audit data can be started,
+tested, inspected, and extended without hidden setup steps.
+
+In a real security product, the first risk is rarely the dashboard. It is weak
+authentication, unclear runtime boundaries, unmanaged dependencies, leaked
+configuration, and tests that only work on one machine. This project prioritizes
+those fundamentals before expanding into larger audit workflows such as RBAC,
+tenant isolation, immutable audit events, or deployment automation.
+
+## Engineering Narrative
+
+DataGuardian began as a broader Python-backed prototype and was consolidated
+around a Go backend for the active runtime. That migration is intentional: the
+project now has one backend source of truth, one Docker runtime path, and one CI
+contract.
+
+Go is used for the backend because it fits the shape of the problem:
+
+- Strong static typing for authentication and configuration boundaries.
+- Small operational footprint for API services.
+- Clear standard-library HTTP behavior.
+- Good concurrency and timeout primitives for future audit workloads.
+- Straightforward container execution with predictable builds.
+
+Docker Compose is the default runtime because reproducibility is part of the
+product. A reviewer should be able to start PostgreSQL, the API, and the
+frontend with one command and see the same service topology used by the scripts.
+
+Python remains intentionally optional. It is used only for pytest and Playwright
+browser E2E tests. The application, backend, frontend, Docker stack, and core
+test bundle do not require Python to run.
+
+## Architecture
+
+```text
+Browser
+  |
+  v
+Next.js frontend  --->  Go HTTP API  --->  PostgreSQL 15
+                              |
+                              v
+                    Security middleware and auth
+```
+
+Active runtime services:
+
+- `db`: PostgreSQL 15
+- `backend-go`: Go API
+- `frontend`: Next.js application
+
+The Go API handles registration, login, session validation, logout, project
+tracking, baseline audit runs, local dev/test bootstrap users, and PostgreSQL
+persistence. The frontend provides login, registration, an authenticated
+dashboard, automatic default project selection for new users, optional project
+creation, audit execution, audit results, and session-aware navigation.
+
+The legacy Python implementation is not part of Docker, CI, startup scripts, or
+the active runtime.
+
+## Security Mindset
+
+Security is treated as a workflow property, not a README claim.
+
+- Passwords are hashed with Argon2id.
+- Sessions use HttpOnly RS256 JWT cookies.
+- JWT validation requires expected claims and rejects unexpected signing
+  methods.
+- Production configuration requires explicit database URL, JWT keys, and
+  encryption key.
+- Production requests require HTTPS or trusted proxy forwarding.
+- Login and registration are rate limited.
+- Backend and frontend responses set basic hardening headers.
+- `npm audit --audit-level=high` checks frontend dependency risk.
+- `security/run_security_checks.sh` scans for obvious secret exposure and
+  verifies `.env` is ignored.
+- `security/audit.sh` checks runtime responses for sensitive leakage and risky
+  headers.
+- CI separates backend tests, security checks, and frontend build so failures
+  are easier to reason about.
+
+The repository is also structured for CodeQL adoption: active source is
+separated by runtime, generated artifacts are ignored, and CI has clear security
+gates where code scanning can be added.
+
+## Execution Modes
+
+### Quick Start
+
+Prerequisite: Docker with Docker Compose.
+
+Start the complete system:
+
+```bash
+docker compose up --build
 ```
 
 Open:
@@ -92,224 +382,604 @@ Backend:  http://localhost:8000
 Health:   http://localhost:8000/health
 ```
 
-`start.sh manual` starts `db`, `backend-go`, and `frontend` through Docker Compose and follows backend/frontend logs. It does not kill unrelated processes. If ports `3000` or `8000` are owned by another process, it stops with a clear error.
+The default Docker configuration starts PostgreSQL, the compiled Go backend,
+and the production Next.js frontend. Local dev/test users are bootstrapped in
+the default `dev` environment:
 
-Equivalent service-only command:
-
-```bash
-./scripts/up.sh
+```text
+admin / admin123
+test  / test123
 ```
 
-### 2. Manual Testing And Visual Verification
+No `.env` file is required for local use. Copy `.env.example` to `.env` only
+when overriding ports, credentials, cookie settings, or public frontend API
+URL. For storage hygiene, `STORAGE_ORPHAN_RETENTION_HOURS` controls cleanup of
+old unreferenced storage files during backend startup. Invalid integer values,
+invalid backend addresses, and unsafe cookie combinations fail during startup
+with a configuration error.
 
-Start the stack:
+### Manual Usage
 
 ```bash
 ./start.sh manual
 ```
 
-Use the development test user:
+Manual mode starts PostgreSQL, the compiled Go backend, and the production
+frontend through Docker Compose. It waits for readiness and then follows
+backend and frontend logs.
+
+Open:
 
 ```text
-Username: admin
-Password: admin123
+Frontend: http://localhost:3000
+Backend:  http://localhost:8000
+Health:   http://localhost:8000/health
 ```
 
-Then verify:
+Local dev/test users:
 
-1. Open `http://localhost:3000/login`.
-2. Sign in with `admin / admin123`.
-3. Confirm navigation to `/dashboard`.
-4. Confirm the dashboard shows the signed-in user.
-
-To run browser E2E tests visibly:
-
-```bash
-./start.sh auto --visual
+```text
+admin / admin123
+test  / test123
 ```
 
-The `admin` and `test` local users are created only in `dev` and `test` environments. They are never bootstrapped in production.
+These users are created only in `dev` and `test` environments.
 
-### 3. Automated Testing
-
-Run the full local automation flow:
+### Automated Mode
 
 ```bash
 ./start.sh auto
 ```
 
-This runs security checks, starts the Docker Compose services, runs the runtime audit, and runs Go tests. If pytest is available, it also runs Playwright E2E tests. If pytest is not available, E2E tests are skipped with:
+Automated mode runs security checks, starts the Docker stack, runs the runtime
+security audit, executes Go backend tests, and runs browser E2E tests only when
+pytest is available.
 
-```text
-[WARN] pytest not found. Skipping E2E tests.
+Visual browser mode:
+
+```bash
+./start.sh auto --visual
 ```
 
-Run the local test bundle:
+### Core Test Bundle
 
 ```bash
 ./run-tests.sh
 ```
 
-`./run-tests.sh` always runs Go tests and the frontend build. If pytest is available, it also runs the architecture contract test and Playwright E2E tests. If pytest is missing, those pytest-based checks are skipped with the same warning.
+This runs Go tests and the frontend production build. If pytest is installed,
+it also runs the architecture contract and browser E2E tests. If pytest is not
+installed, E2E is skipped gracefully:
 
-Run individual checks:
-
-```bash
-cd backend-go && go test ./...
-cd frontend && npm run build
+```text
+[WARN] pytest not found. Skipping E2E tests.
 ```
 
-### Optional E2E Testing (pytest)
+## Setup And Commands
 
-The project works without Python. Python and pytest are only needed for optional browser E2E testing.
-
-Install pytest tooling globally or in your own environment:
+Run the Docker-first stack:
 
 ```bash
-pip install pytest pytest-playwright
+docker compose up --build
 ```
 
-Or keep it outside the repository:
+Run the Docker health validation service after or during local startup:
 
 ```bash
-python3 -m venv /tmp/dataguardian-pytest
-/tmp/dataguardian-pytest/bin/pip install pytest pytest-playwright
+docker compose up --build validation
 ```
 
-If you use a pytest binary outside `PATH`, set `PYTEST_BIN`:
+Run the release smoke flow after the stack is up:
 
 ```bash
-PYTEST_BIN=/path/to/pytest ./start.sh auto
-PYTEST_BIN=/path/to/pytest ./run-tests.sh
+./scripts/smoke.sh
 ```
 
-The script detection order is:
+The smoke flow checks backend health, frontend availability, login, dashboard
+availability, one file analysis, and one URL analysis. It uses the local demo
+admin account and a small public IANA example-domain page by default. Override
+`SMOKE_USER`, `SMOKE_PASSWORD`, or `SMOKE_URL` only when needed. Start the stack
+before running this command; in restricted networks, point `SMOKE_URL` at an
+allowed public HTTP/HTTPS URL that passes SSRF protections.
 
-1. Use `PYTEST_BIN` if it is set.
-2. Else use `pytest` from `PATH` if available.
-3. Else print the warning and skip E2E tests.
+Run the lightweight release preflight before tagging:
 
-## Security Model
+```bash
+./scripts/release-check.sh
+```
 
-Authentication:
+This checks required release files, shell helper syntax, and Docker Compose
+configuration without starting the stack.
 
-- Passwords are hashed with Argon2id.
-- Plaintext passwords are never stored.
-- JWT access tokens are signed with RS256.
-- JWT validation requires `exp`, `iat`, and `sub`.
-- The signing algorithm is pinned to RS256.
-- `/auth/login` and `/auth/register` are rate limited.
+Install frontend dependencies:
 
-Cookies:
+```bash
+cd frontend
+npm ci
+```
 
-- Sessions are stored in HttpOnly cookies.
-- Cookies use `SameSite=Lax`.
-- Cookies are marked `Secure` in production.
-- The frontend uses `credentials: "include"` and does not store JWTs in `localStorage`.
+Start services without following logs:
 
-Production assumptions:
+```bash
+./scripts/up.sh
+```
 
-- `ENVIRONMENT=prod` requires `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, and `FERNET_KEY`.
-- JWT keys must come from a secret manager or deployment environment.
-- Production requests must arrive over HTTPS or through a proxy that sets `X-Forwarded-Proto: https`.
-- Fernet is reserved for future reversible sensitive data encryption. It is not used for passwords.
+`scripts/up.sh` waits for backend/frontend readiness and prints the browser
+URL, backend health URL, and local demo users. On Windows, use the Docker
+Compose commands from PowerShell instead of the shell helper scripts.
 
-Security commands:
+Rebuild after pulling updates:
+
+```bash
+docker compose up -d --build db backend-go frontend
+```
+
+Restart without rebuilding:
+
+```bash
+docker compose restart backend-go frontend
+```
+
+Reset local Docker data only when you intentionally want to remove the local
+database and stored analysis files:
+
+```bash
+docker compose down -v
+```
+
+Install optional E2E tooling:
+
+```bash
+./scripts/install.sh
+```
+
+`scripts/install.sh` creates `.venv/`, installs `pytest` and
+`pytest-playwright`, and runs `npm ci` for the frontend. This is useful for
+browser E2E development, but it is not required for normal application usage.
+
+Run backend tests:
+
+```bash
+cd backend-go
+go test ./...
+```
+
+Run backend tests through Docker when local Go is unavailable:
+
+```bash
+docker compose run --rm backend-go-test go test ./...
+```
+
+Run frontend type check:
+
+```bash
+cd frontend
+npm run test
+```
+
+Build frontend:
+
+```bash
+cd frontend
+npm run build
+```
+
+Run optional E2E tests after the stack is running:
+
+```bash
+pytest tests/e2e
+```
+
+### E2E Testing
+
+The browser E2E test uses pytest and Playwright to exercise the full user flow
+against running local services:
+
+- frontend: `http://localhost:3000`
+- backend: `http://localhost:8000`
+
+Install the optional Python test tools:
+
+```bash
+./scripts/install.sh
+```
+
+If installing manually, install pytest and Playwright, then install the browser
+runtime:
+
+```bash
+python -m pip install pytest pytest-playwright
+python -m playwright install chromium
+```
+
+Start the stack before running E2E:
+
+```bash
+./scripts/up.sh
+pytest tests/e2e/test_full_flow.py
+```
+
+The test registers a unique user, logs in through the browser, verifies the
+default project flow, creates file and URL analyses with the authenticated
+browser session, verifies dashboard history and analysis details, checks the
+sanitized-file section and download action, then signs out.
+
+Build local backend binaries:
+
+```bash
+./scripts/build_go.sh
+```
+
+Generated binaries are written under `dist/`, which is intentionally ignored.
+
+## Security Commands
+
+Run dependency, secret, and config checks:
 
 ```bash
 ./security/run_security_checks.sh
+```
+
+Run secret-only checks:
+
+```bash
 ./security/run_security_checks.sh --secrets-only
+```
+
+Run runtime exposure audit after services are up:
+
+```bash
 ./security/audit.sh
 ```
 
-The security scripts check Node dependency risk, tracked/untracked repository files for obvious secret assignments, `.env` ignore/tracking status, and runtime responses for stack traces or sensitive leakage.
-
-## CI/CD
-
-GitHub Actions runs on push and pull request:
-
-1. Start PostgreSQL 15.
-2. Set up Go from `backend-go/go.mod`.
-3. Run `go test ./...`.
-4. Set up Python only for the architecture contract test.
-5. Install frontend dependencies with `npm ci`.
-6. Run `npm audit --audit-level=high`.
-7. Run the repository secret scan.
-8. Build the frontend.
-
-CI does not run the legacy Python backend.
-
-## Project Structure
-
-```text
-backend-go/              Active Go backend
-backend-legacy-python/   Reference-only legacy backend
-frontend/                Next.js application
-scripts/                 Local setup, diagnostics, startup, build helpers
-security/                Security check and runtime audit scripts
-tests/                   Architecture and Playwright E2E tests
-.github/workflows/       CI pipeline
-docker-compose.yml       Local runtime stack
-start.sh                 Main orchestrator
-run-tests.sh             Local non-E2E test bundle
-```
-
-## Versioning Readiness
-
-Stabilized for this version:
-
-- Go-only backend runtime.
-- Docker Compose starts only `db`, `backend-go`, and `frontend`.
-- Deterministic startup scripts.
-- No Python backend execution in active automation.
-- Dev/test bootstrap user guarded by environment.
-- Go tests, architecture contract test, frontend build, E2E flow, and security scripts.
-- `.env`, `.venv`, build outputs, caches, logs, local databases, and dependency folders ignored by Git.
-
-Intentionally not implemented yet:
-
-- Multi-tenant isolation.
-- RBAC.
-- Audit trail.
-- Enterprise billing.
-- Cloud infrastructure.
-- Production deployment automation.
-
-## Roadmap
-
-Next phases:
-
-- Rebuild the database audit engine in Go.
-- Add tenant isolation.
-- Add RBAC.
-- Add immutable audit trail events.
-- Add enterprise SaaS packaging and deployment guidance.
-- Add deeper security testing and production observability.
-
-## Troubleshooting
-
-Port conflict:
+Inspect ports and Docker state:
 
 ```bash
 ./scripts/doctor.sh
 ```
 
-If a non-DataGuardian process owns port `3000` or `8000`, stop it manually and rerun startup. The scripts do not kill arbitrary processes.
+## Product API
+
+Authenticated product routes:
+
+- `GET /projects`: list projects for the signed-in user.
+- `POST /projects`: create a project with `name` and `target`.
+- `GET /projects/{id}`: fetch one project owned by the signed-in user.
+- `POST /projects/{id}/audit`: run and store a baseline audit result.
+- `GET /projects/{id}/audits`: list audit results for a project.
+- `GET /analyses`: list file and URL analysis history for the signed-in user.
+  Supports `page`, `pageSize`, `inputType`, `riskLevel`, and `status` query
+  parameters. Filtering, ordering, and pagination are applied in the database.
+- `POST /analyses`: create a file analysis from a multipart upload, or a URL
+  analysis from a JSON body.
+- `GET /analyses/{id}`: fetch a completed file or URL analysis result.
+- `DELETE /analyses/{id}`: delete an analysis owned by the signed-in user and
+  remove associated stored original/sanitized files when present.
+- `GET /analyses/{id}/file`: download the original uploaded file, or the
+  isolated remote file captured during a URL analysis, when one is available
+  for an analysis owned by the signed-in user.
+- `GET /analyses/{id}/clean-file`: download the sanitized file for a file
+  analysis or remote-file URL analysis when clean-file generation completed.
+- `GET /storage`: return admin-only storage usage counts without exposing
+  filesystem paths.
+
+The authenticated dashboard shows project audit results and paginated analysis
+history. New users get a default project automatically, while manual project
+creation remains available for users who need separate project scopes. Analysis
+rows include target type, status, risk level, timestamp, view, and delete
+actions. Admin users also see a compact storage usage summary. History can be
+filtered by file/URL type, risk, and status. Selecting an analysis loads the
+existing `GET /analyses/{id}` result and shows summary,
+findings, deterministic explanations, metadata, risk score, original file
+details, and sanitized file details when available. Deleting an analysis removes
+the database record and its stored original/sanitized files after ownership
+validation. The Original File panel shows filename, MIME type, size, risk
+warning, and a mediated download button. High-risk originals require an explicit
+typed confirmation before download and state that passive inspection reduces
+exposure but does not guarantee malware detection. Remote-file analyses also
+state that the backend inspected the remote content before local download. The
+Sanitized File panel shows filename, size, cleaning status, metadata removed,
+sanitization limitations, and a separate sanitized-copy download button. The
+Safe Preview panel shows a static
+image or plain-text preview when one can be generated without executing active
+content. The history endpoint is scoped through the signed-in user's projects,
+so users only see analyses attached to projects they own. If a browser session
+expires, the dashboard redirects to sign-in with a short session-expired
+message.
+
+Analysis responses include an explanation layer for each finding. This layer is
+template-based and deterministic: it explains findings that already exist,
+suggests mitigation, and contextualizes risk. It does not detect
+vulnerabilities, change findings, change scoring, execute content, fetch
+external data, or call an external AI service. A provider interface exists so a
+future LLM-based explainer can be plugged in without changing the detection
+pipeline.
+
+Deletion is permanent. Missing artifact files are handled gracefully. Stored
+paths are still checked against the configured storage directory before any file
+removal is attempted, and unsafe stale references are skipped rather than
+followed.
+
+### File Analysis
+
+The file analysis slice supports authenticated uploads.
+
+Example:
+
+```bash
+curl -i \
+  -X POST http://localhost:8000/analyses \
+  -b "dataguardian_session=<session-cookie>" \
+  -F "projectId=1" \
+  -F "inputType=FILE" \
+  -F "file=@sample.pdf"
+```
+
+Supported upload types:
+
+- PDF: `application/pdf`
+- JPEG: `image/jpeg`
+- PNG: `image/png`
+- Plain text: `text/plain`
+
+Current limits and behavior:
+
+- Maximum file size is 10 MB.
+- Files are stored under the configured `STORAGE_DIR`, defaulting to
+  `/tmp/dataguardian/uploads`.
+- The backend computes a SHA-256 checksum for every accepted file.
+- Minimal analysis scans raw bytes for PDF JavaScript/OpenAction markers,
+  base64-like long strings, and `eval(` string patterns.
+- Metadata includes filename, MIME type, size, checksum, and lightweight
+  file-format metadata.
+- PDF metadata extraction currently checks producer, author, creation date, and
+  whether embedded-object markers are present.
+- JPEG metadata extraction currently checks EXIF camera model, datetime, and
+  GPS when present.
+- Metadata entries are classified by category and sensitivity. For example,
+  GPS is `SENSITIVE`, author/tool fields are `POTENTIALLY_SENSITIVE`, and file
+  size is `NON_SENSITIVE`.
+- Metadata findings currently include `METADATA_GPS_EXPOSED`,
+  `METADATA_AUTHOR_PRESENT`, and `METADATA_SUSPICIOUS_PRESENT`.
+- Safe Preview supports static JPEG/PNG image previews, plain-text previews,
+  and a first-page PDF static image generated from inert text snippets. It does
+  not embed a PDF viewer or execute PDF actions.
+- Sanitized file generation creates a metadata-cleaned file record for file analyses.
+  JPEG sanitization removes EXIF APP1 segments. PDF sanitization removes a
+  small set of non-essential literal metadata fields such as author, producer,
+  and creation date.
+- `cleanFile` is returned for PDF and JPEG file analyses, including supported
+  remote-file URL analyses, when sanitization is recorded. PNG, text, and URL
+  responses without a supported remote file return `cleanFile: null`.
+- Original files are preserved exactly as uploaded and can be downloaded from
+  the analysis details UI or from `GET /analyses/{id}/file`.
+- Completed sanitized copies can be downloaded from the analysis details UI or from
+  `GET /analyses/{id}/clean-file` with the signed-in user's session cookie.
+- Sanitization transparency is shown in the dashboard. EXIF removal is reported
+  as EXIF removed, including GPS/location fields when present. PDF metadata
+  removal reports author, producer/tool, and timestamp fields when applicable.
+  The dashboard also calls out cleanup limits: sanitization removes supported
+  metadata only; it does not remove malware, scripts, embedded content, or
+  active document behavior.
+
+Security boundary:
+
+- Uploaded files are treated as untrusted binary data.
+- Files are not executed, opened in active viewers, or processed by browser PDF
+  engines.
+- PDF previews are generated as static images only. Embedded PDF JavaScript and
+  actions are not executed.
+- Sanitization is binary-only and removes metadata; it does not execute content
+  or add replacement document content.
+- The current sanitized file feature is lightweight metadata removal, not full
+  document sanitization or malware removal.
+- The current implementation is structured for future sandboxing, but does not
+  provide a sandbox yet.
+
+### URL Analysis
+
+URL analysis accepts an authenticated JSON request:
+
+```bash
+curl -i \
+  -X POST http://localhost:8000/analyses \
+  -b "dataguardian_session=<session-cookie>" \
+  -H "Content-Type: application/json" \
+  -d '{"projectId":1,"inputType":"URL","url":{"originalUrl":"https://www.iana.org/help/example-domains"}}'
+```
+
+Current limits and behavior:
+
+- Only `http` and `https` URLs are accepted.
+- The backend performs passive HTTP GET requests only.
+- JavaScript is not executed, HTML is not rendered, and browser behavior is not
+  simulated.
+- Redirects are followed manually up to 3 hops and recorded in `urlTarget`.
+- Requests time out after 5 seconds.
+- Responses are limited to 2 MB.
+- URL metadata includes content type, content length, host, protocol, HTTP
+  status, and redirect information.
+- Raw response bytes are scanned for base64-like strings, `eval(`, and
+  suspicious long encoded strings.
+- Safe Preview extracts a capped plain-text preview from passively fetched
+  bytes. HTML tags, scripts, and styles are stripped as text processing only;
+  the page is never rendered.
+- If the URL response is a supported downloadable file, DataGuardian stores an
+  isolated backend copy and runs the same file inspection pipeline before any
+  local download. Initial remote file support is limited to PDF, JPEG, PNG, and
+  plain text responses under the URL response size limit. Misleading file
+  content types are checked against fetched bytes before entering the
+  remote-file flow.
+- Remote-file URL analyses expose the same safe preview, findings, metadata,
+  risk score, Original File download, and sanitized-copy download when
+  sanitization is supported. Unsupported URL responses remain URL-only analyses
+  with `file` and `cleanFile` unavailable.
+
+URL findings currently include:
+
+- `URL_NO_HTTPS`
+- `URL_REDIRECT_DETECTED`
+- `URL_FETCH_FAILED`
+- `URL_SUSPICIOUS_CONTENT`
+
+URL security boundary:
+
+- URL inputs are treated as untrusted.
+- URL previews are plain text only. DataGuardian does not execute JavaScript,
+  build an interactive DOM, run headless browser automation, or simulate a user
+  browser.
+- Remote files are downloaded only inside the backend analysis environment and
+  are inspected as untrusted bytes. They are not executed, rendered in active
+  viewers, or opened by browser PDF engines.
+- Remote file inspection reduces direct exposure of the user's machine, but it
+  does not guarantee malware detection or full safety.
+- Localhost, loopback IPs, link-local addresses, and private/internal IP ranges
+  such as `10.0.0.0/8`, `172.16.0.0/12`, and `192.168.0.0/16` are blocked to
+  reduce SSRF risk.
+- The same SSRF checks are applied to redirect targets before each request.
+  The HTTP transport also resolves and validates the dial target so the request
+  uses a checked public IP instead of relying on an unchecked re-resolution.
+- The implementation is structured for future network isolation or sandboxing,
+  but does not provide a separate sandbox yet.
+
+## CI/CD And Dependency Policy
+
+GitHub Actions runs on push and pull request:
+
+- `backend-tests`: PostgreSQL service, Go setup, `go test ./...`, and the
+  architecture contract.
+- `security-checks`: `npm ci`, `npm audit --audit-level=high`, and repository
+  secret checks.
+- `frontend-build`: `npm ci` and `npm run build`.
+
+Backend tests and security checks are mandatory. Frontend builds still run on
+Dependabot pull requests, but Dependabot frontend build failures are
+non-blocking to avoid noisy incompatible dependency PRs. Human pull requests
+and pushes still require the frontend build to pass.
+
+Frontend dependency management is deliberately conservative:
+
+- Direct frontend dependencies are pinned to exact versions.
+- CI installs from `frontend/package-lock.json` with `npm ci`.
+- Dependabot npm version updates are limited to patch-level changes.
+- Minor and major framework/tooling upgrades require manual review.
+
+## For Recruiters
+
+DataGuardian is intentionally scoped, but the engineering choices are
+production-oriented.
+
+What this project demonstrates:
+
+- Migration judgment: the active backend moved from a Python prototype shape to
+  a Go service with one runtime path and clearer operational boundaries.
+- Runtime discipline: Docker Compose starts only PostgreSQL, the Go API, and
+  the Next.js frontend.
+- Security-first design: authentication, cookie handling, config validation,
+  dependency scanning, secret detection, and runtime exposure checks are built
+  into normal workflows.
+- Testing philosophy: fast Go tests cover core auth behavior; frontend builds
+  validate the UI contract; optional Playwright E2E covers browser behavior
+  without making Python mandatory.
+- Trade-off awareness: the project favors a stable foundation over prematurely
+  implementing enterprise features such as RBAC, billing, or cloud deployment.
+- Operational clarity: scripts, README commands, Docker services, and CI jobs
+  describe the same system.
+
+The result is a repository that can be reviewed as both a working product slice
+and an engineering sample: small enough to understand, complete enough to run,
+and structured enough to extend.
+
+## Release v1.0.0
+
+Release candidate checklist:
+
+- Docker startup succeeds with `docker compose up --build`.
+- Backend health returns `{"status":"ok"}` at `http://localhost:8000/health`.
+- `./scripts/release-check.sh` passes from a clean checkout.
+- `./scripts/smoke.sh` passes after the stack is running.
+- File and URL analyses complete without executing active content.
+- Original and sanitized downloads remain authenticated and ownership-scoped.
+- Safe previews are static, bounded, and unavailable for unsupported content.
+- Sanitized files are described as metadata-cleaned only.
+- `go test ./...` and `npm run build` pass before release.
+
+Tag:
+
+```text
+v1.0.0
+```
+
+Title:
+
+```text
+v1.0.0 - DataGuardian Release Candidate
+```
+
+Release focus:
+
+- Go backend migration completed for the active runtime.
+- Security posture improved with Argon2id passwords, RS256 session tokens,
+  hardened cookies, rate limiting, dependency scanning, and secret checks.
+- Docker-based execution standardized for local usage and automated flows.
+- File and URL analysis flows completed with deterministic findings, metadata,
+  risk scoring, explanations, and sanitized-file download for file analyses.
+- Optional pytest and Playwright E2E testing isolated from core application
+  requirements.
+- Repository hygiene cleaned with generated artifacts, secrets, and local caches
+  ignored.
+- Architecture documentation added to explain decisions, trade-offs, and
+  release-candidate readiness thinking.
+
+## Project Structure
+
+```text
+backend-go/              Active Go backend
+frontend/                Next.js application
+tests/                   Architecture and optional Playwright E2E tests
+scripts/                 Install, startup, diagnostics, and build helpers
+security/                Dependency, secret, and runtime security checks
+.github/workflows/       CI pipeline
+.github/dependabot.yml   Dependency automation policy
+docker-compose.yml       Local runtime stack
+scripts/release-check.sh Lightweight release preflight
+scripts/smoke.sh         Running-stack smoke validation
+start.sh                 Main manual/automated orchestrator
+run-tests.sh             Local validation bundle
+```
+
+## Troubleshooting
 
 Docker not running:
 
+- Start Docker Desktop from your applications menu.
+- Wait until Docker reports that it is running.
+- Try:
+
 ```bash
 docker compose config --services
+```
+
+Ports already in use:
+
+```bash
+./scripts/doctor.sh
+```
+
+If a non-DataGuardian process owns port `3000`, `8000`, or `5434`, stop it
+manually and rerun startup. The scripts do not kill unrelated processes.
+
+Backend or frontend did not start:
+
+```bash
 docker compose up -d db backend-go frontend
 ```
 
-If Docker reports a daemon error, start Docker Desktop or the Docker service first.
+Then inspect logs:
 
-Database startup issues:
-
-- Confirm `docker compose ps` shows `dataguardian_db`.
-- Confirm local PostgreSQL is mapped to port `5434`.
-- Confirm the backend uses `db:5432` inside Docker Compose.
+```bash
+docker compose logs backend-go frontend
+```
 
 Frontend cannot reach backend:
 
@@ -317,15 +987,44 @@ Frontend cannot reach backend:
 - Confirm `NEXT_PUBLIC_API_URL` is `http://localhost:8000` for local Docker use.
 - Restart with `./scripts/up.sh`.
 
-Missing test tooling:
+Invalid config or storage startup failure:
+
+- Check `docker compose logs backend-go`.
+- Confirm `.env` values are integers where required.
+- Confirm `STORAGE_DIR` points to a writable directory inside the container.
+- For default Docker usage, leave `STORAGE_DIR=/data/uploads`.
+- If smoke validation fails immediately, use the service URL printed by
+  `./scripts/smoke.sh`, confirm the stack is running, and retry after
+  `http://localhost:8000/health` returns `{"status":"ok"}`.
+
+Reset local state:
+
+```bash
+docker compose down -v
+docker compose up --build
+```
+
+Pytest not installed:
+
+- This is expected unless you are running browser E2E tests.
+- Install the optional tools with:
 
 ```bash
 ./scripts/install.sh
 ```
 
-Then rerun:
+Browser E2E does not open:
+
+- Confirm the app is running at `http://localhost:3000`.
+- Confirm Playwright installed Chromium:
 
 ```bash
-./run-tests.sh
-./start.sh auto
+.venv/bin/python -m playwright install chromium
+```
+
+- In a headless server or restricted environment, use the non-visual E2E
+  command first:
+
+```bash
+.venv/bin/pytest tests/e2e/test_full_flow.py
 ```

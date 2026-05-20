@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -88,18 +89,29 @@ func decodeHash(encodedHash string) (argon2Params, []byte, []byte, error) {
 		if len(keyValue) != 2 {
 			return argon2Params{}, nil, nil, errors.New("invalid argon2 parameters")
 		}
-		value, err := strconv.ParseUint(keyValue[1], 10, 32)
-		if err != nil {
-			return argon2Params{}, nil, nil, err
-		}
 		switch keyValue[0] {
 		case "m":
-			params.memory = uint32(value)
+			value, err := parseUint32Param(keyValue[1])
+			if err != nil {
+				return argon2Params{}, nil, nil, err
+			}
+			params.memory = value
 		case "t":
-			params.iterations = uint32(value)
+			value, err := parseUint32Param(keyValue[1])
+			if err != nil {
+				return argon2Params{}, nil, nil, err
+			}
+			params.iterations = value
 		case "p":
-			params.parallelism = uint8(value)
+			value, err := parseUint8Param(keyValue[1])
+			if err != nil {
+				return argon2Params{}, nil, nil, err
+			}
+			params.parallelism = value
 		}
+	}
+	if params.memory == 0 || params.iterations == 0 || params.parallelism == 0 {
+		return argon2Params{}, nil, nil, errors.New("invalid argon2 parameters")
 	}
 
 	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
@@ -111,4 +123,26 @@ func decodeHash(encodedHash string) (argon2Params, []byte, []byte, error) {
 		return argon2Params{}, nil, nil, err
 	}
 	return params, salt, hash, nil
+}
+
+func parseUint32Param(value string) (uint32, error) {
+	parsed, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	if parsed == 0 || parsed > math.MaxUint32 {
+		return 0, errors.New("argon2 parameter out of range")
+	}
+	return uint32(parsed), nil
+}
+
+func parseUint8Param(value string) (uint8, error) {
+	parsed, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	if parsed == 0 || parsed > math.MaxUint8 {
+		return 0, errors.New("argon2 parameter out of range")
+	}
+	return uint8(parsed), nil
 }

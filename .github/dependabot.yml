@@ -1,7 +1,18 @@
 version: 2
 
 updates:
-  - package-ecosystem: "pip"
-    directory: "/backend"
+  - package-ecosystem: "gomod"
+    directory: "/backend-go"
     schedule:
       interval: "weekly"
+
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"

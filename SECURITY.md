@@ -12,8 +12,7 @@ If you discover a security vulnerability, please DO NOT open a public issue.
 
 Instead, report it privately via:
 
-- GitHub Security Advisories (preferred)
-- Or contact: your-email@example.com
+- GitHub Security Advisories
 
 ### What to expect
 
@@ -29,5 +28,8 @@ This project handles authentication, audit data, and project isolation. Any issu
 - Data leakage
 - Multi-tenant isolation flaws
 - Injection vulnerabilities
+- Unsafe download, preview, or artifact deletion access
+- Path traversal or unsafe file handling
+- Unauthorized access to operator-only storage information
 
 is considered critical.

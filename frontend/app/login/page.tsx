@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -33,11 +33,18 @@ async function readLoginError(response: Response) {
 }
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+	const router = useRouter();
+	const [username, setUsername] = useState("");
+	const [password, setPassword] = useState("");
+	const [error, setError] = useState("");
+	const [notice, setNotice] = useState("");
+	const [loading, setLoading] = useState(false);
+
+	useEffect(() => {
+		if (window.location.search.includes("reason=session-expired")) {
+			setNotice("Your session expired. Sign in again to continue.");
+		}
+	}, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -82,6 +89,11 @@ export default function LoginPage() {
           {!IS_PRODUCTION ? (
             <p className="mt-3 rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-700">
               Dev login: admin / admin123
+            </p>
+          ) : null}
+          {notice ? (
+            <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {notice}
             </p>
           ) : null}
         </div>
