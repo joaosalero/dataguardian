@@ -11,6 +11,7 @@ log() {
 need() {
   if ! command -v "$1" >/dev/null 2>&1; then
     log "$1 is required."
+    log "Install the missing tool, then retry. For first-run help, open START-HERE.txt."
     exit 1
   fi
 }
@@ -22,6 +23,7 @@ compose() {
     docker-compose "$@"
   else
     log "Docker Compose is required."
+    log "Install or update Docker Desktop, then retry."
     exit 1
   fi
 }
@@ -29,6 +31,7 @@ compose() {
 check_file() {
   if [ ! -f "$1" ]; then
     log "required file is missing: $1"
+    log "If this came from a ZIP download, extract the full package before retrying."
     exit 1
   fi
 }
@@ -63,5 +66,5 @@ log "checking Docker Compose configuration"
 compose config --quiet
 
 log "preflight passed"
-log "next: docker compose up --build"
-log "then: ./scripts/smoke.sh"
+log "next: start with ./start-dataguardian.sh or start-dataguardian.bat"
+log "after startup: ./scripts/smoke.sh"

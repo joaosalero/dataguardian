@@ -4,6 +4,14 @@ DataGuardian - Start Here
 DataGuardian is a local Docker-first inspection tool for suspicious files and
 URLs. It runs on your computer through Docker Compose.
 
+First-run checklist
+-------------------
+
+1. Extract the ZIP or clone the repository.
+2. Start Docker Desktop or the Docker service yourself.
+3. Run the launcher for your operating system from this folder.
+4. Open http://localhost:3000 when the launcher says DataGuardian is ready.
+
 What to run first
 -----------------
 
@@ -25,6 +33,7 @@ What the launchers do
 - Run the normal Docker Compose startup commands in this folder.
 - Wait for the backend and frontend to become ready.
 - Show http://localhost:3000 and ask before opening a browser.
+- Print recovery steps if startup does not complete.
 
 What the launchers do NOT do
 ----------------------------
@@ -42,6 +51,22 @@ Files beginners should use
 - start-dataguardian.bat: Windows launcher.
 - start-dataguardian.sh: Linux/macOS launcher.
 - README.md: full setup, recovery, and project notes.
+
+After startup
+-------------
+
+Open http://localhost:3000 and sign in with one of the local demo users:
+  admin / admin123
+  test  / test123
+
+Optional confidence check for maintainers and reviewers:
+  ./scripts/release-check.sh
+  ./scripts/smoke.sh
+
+These checks are not required for normal use. The release check verifies the
+downloaded folder shape, shell syntax, and Docker Compose configuration without
+starting the stack. The smoke check runs after startup and verifies that the
+local stack can log in and perform a small file and URL analysis.
 
 Files beginners usually should not edit
 ---------------------------------------
@@ -61,6 +86,9 @@ If startup fails:
   3. Restart without deleting data: docker compose down
   4. Run the launcher again.
   5. Inspect logs if needed: docker compose logs backend-go frontend
+
+If the browser does not open, open this address manually:
+  http://localhost:3000
 
 Reset local data only if you intentionally want to remove the local database
 and stored analysis files:

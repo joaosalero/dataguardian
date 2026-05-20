@@ -21,6 +21,7 @@ log() {
 need() {
   if ! command -v "$1" >/dev/null 2>&1; then
     log "$1 is required for smoke validation."
+    log "Install the missing tool, then retry. For first-run help, open START-HERE.txt."
     exit 1
   fi
 }
@@ -32,6 +33,7 @@ check_url() {
     log "$label is not reachable at $url"
     log "Start or restart the stack, then retry: ./start-dataguardian.sh"
     log "On Windows, double-click start-dataguardian.bat."
+    log "For beginner recovery help, open START-HERE.txt."
     log "For details, inspect logs with: docker compose logs backend-go frontend"
     exit 1
   fi
@@ -60,6 +62,7 @@ if ! curl -fsS --max-time 10 \
   "$BACKEND_URL/auth/login" >/dev/null; then
   log "login failed for smoke user $SMOKE_USER"
   log "Restart the stack, then retry. Default local users are admin / admin123 and test / test123."
+  log "For beginner recovery help, open START-HERE.txt."
   exit 1
 fi
 
@@ -72,6 +75,7 @@ project_id="$(printf '%s' "$project_payload" | json_value "id")"
 if [ -z "$project_id" ]; then
   log "could not read project id from create-project response"
   log "Inspect backend logs with: docker compose logs backend-go"
+  log "For beginner recovery help, open START-HERE.txt."
   exit 1
 fi
 
