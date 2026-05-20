@@ -49,10 +49,12 @@ check_file BACKLOG.md
 check_file SECURITY.md
 check_file docker-compose.yml
 check_file .env.example
+check_file start-dataguardian.bat
 
 log "checking shell helper syntax"
 check_shell scripts/release-check.sh
 check_shell start.sh
+check_shell start-dataguardian.sh
 check_shell scripts/up.sh
 check_shell scripts/smoke.sh
 

@@ -78,7 +78,45 @@ state.
 If `git` is not installed, install it from <https://git-scm.com/downloads> or
 use the package manager for your operating system.
 
-### One-Command Start
+### Beginner Start
+
+After cloning or downloading the repository, use the launcher for your system.
+It checks Docker, runs the normal Docker Compose startup commands, waits for
+readiness, and shows the local app URL. It does not install system services,
+change system settings, or replace Docker as the runtime.
+
+Windows:
+
+```text
+Double-click start-dataguardian.bat
+```
+
+Linux or macOS:
+
+```bash
+./start-dataguardian.sh
+```
+
+The app is available at:
+
+```text
+http://localhost:3000
+```
+
+Local demo users:
+
+```text
+admin / admin123
+test  / test123
+```
+
+The first startup can take a few minutes while Docker builds the backend and
+frontend images.
+
+The launchers ask before opening your browser. If you prefer full manual
+control, use the Docker command below instead.
+
+### Docker Command Start
 
 After cloning the repository, start everything with:
 
@@ -113,10 +151,10 @@ cd dataguardian
 4. Start DataGuardian:
 
 ```bash
-docker compose up --build
+./start-dataguardian.sh
 ```
 
-5. Open the app in your browser:
+5. The launcher asks whether to open the browser. You can also open:
 
 ```text
 http://localhost:3000
@@ -146,11 +184,12 @@ cd dataguardian
 
 5. Start DataGuardian:
 
-```powershell
-docker compose up --build
+```text
+Double-click start-dataguardian.bat
 ```
 
-6. Open the app in your browser:
+6. The launcher prints the Docker Compose commands it runs and asks before
+   opening the browser. You can also open:
 
 ```text
 http://localhost:3000
@@ -179,10 +218,10 @@ cd dataguardian
 5. Start DataGuardian:
 
 ```bash
-docker compose up --build
+./start-dataguardian.sh
 ```
 
-6. Open the app in your browser:
+6. The launcher asks whether to open the browser. You can also open:
 
 ```text
 http://localhost:3000
@@ -194,7 +233,7 @@ http://localhost:3000
 docker compose down
 ```
 
-The optional helper script also works on Linux and macOS:
+The developer helper script also works on Linux and macOS:
 
 ```bash
 ./start.sh manual
@@ -212,6 +251,36 @@ After startup, run the release smoke check:
 
 On Windows, run the same command from Git Bash, or use the Docker and browser
 checks listed below from PowerShell.
+
+### Startup Recovery
+
+If startup fails:
+
+- Docker not installed: install Docker Desktop, then run the launcher again.
+- Docker not running: open Docker Desktop yourself and wait until it says
+  Docker is running. The launcher does not start Docker Desktop automatically.
+- Ports busy: DataGuardian uses ports `3000`, `8000`, and `5434`. On Linux or
+  macOS, run `./scripts/doctor.sh` to inspect them. On Windows, close the other
+  app using the port and rerun `start-dataguardian.bat`.
+- Stack started but app did not open: visit `http://localhost:3000` manually.
+- Health check failed: inspect logs with `docker compose logs backend-go frontend`.
+
+Restart without deleting local data:
+
+```bash
+docker compose down
+./start-dataguardian.sh
+```
+
+On Windows, run `docker compose down` in PowerShell, then double-click
+`start-dataguardian.bat` again.
+
+Reset local data only when you intentionally want to remove the local database
+and stored analysis files:
+
+```bash
+docker compose down -v
+```
 
 ### Dashboard Walkthrough
 

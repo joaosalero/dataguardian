@@ -30,7 +30,8 @@ check_url() {
   local url="$2"
   if ! curl -fsS --max-time 5 "$url" >/dev/null 2>&1; then
     log "$label is not reachable at $url"
-    log "Start or restart the stack, then retry: docker compose up --build"
+    log "Start or restart the stack, then retry: ./start-dataguardian.sh"
+    log "On Windows, double-click start-dataguardian.bat."
     log "For details, inspect logs with: docker compose logs backend-go frontend"
     exit 1
   fi
@@ -52,11 +53,15 @@ log "checking dashboard route"
 check_url "dashboard route" "$FRONTEND_URL/dashboard"
 
 log "logging in as $SMOKE_USER"
-curl -fsS --max-time 10 \
+if ! curl -fsS --max-time 10 \
   -c "$COOKIE_JAR" \
   -H "Content-Type: application/json" \
   -d "{\"username\":\"$SMOKE_USER\",\"password\":\"$SMOKE_PASSWORD\"}" \
-  "$BACKEND_URL/auth/login" >/dev/null
+  "$BACKEND_URL/auth/login" >/dev/null; then
+  log "login failed for smoke user $SMOKE_USER"
+  log "Restart the stack, then retry. Default local users are admin / admin123 and test / test123."
+  exit 1
+fi
 
 project_payload="$(curl -fsS --max-time 10 \
   -b "$COOKIE_JAR" \
@@ -66,6 +71,7 @@ project_payload="$(curl -fsS --max-time 10 \
 project_id="$(printf '%s' "$project_payload" | json_value "id")"
 if [ -z "$project_id" ]; then
   log "could not read project id from create-project response"
+  log "Inspect backend logs with: docker compose logs backend-go"
   exit 1
 fi
 
