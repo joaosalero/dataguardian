@@ -15,7 +15,7 @@ dependency hygiene, and a clear path from developer laptop to CI.
 
 ## Project Status
 
-MVP stable (under active development)
+MVP stable release candidate (under active development)
 
 Core features are functional:
 - File analysis (PDF, images)
@@ -37,6 +37,10 @@ a local security-oriented analysis before you decide whether to trust it. It
 shows a static safe preview when possible, metadata, deterministic findings,
 risk score, explanations, and, for supported files, a sanitized copy with some
 metadata removed.
+
+DataGuardian is a passive inspection utility. It does not execute uploaded
+files, detonate malware, render remote websites interactively, or replace
+professional sandboxing and incident-response tools.
 
 DataGuardian is Docker-first. You do not need to install Go, Node.js, or
 PostgreSQL just to try the app. Docker starts the database, backend, and

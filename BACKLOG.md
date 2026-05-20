@@ -27,6 +27,9 @@
 - [x] Add lightweight release preflight helper for final RC checks
 - [x] Document release preflight and smoke helpers in project structure
 - [x] Align release title wording with release-candidate readiness
+- [x] Add beginner-friendly Windows and Linux/macOS launchers
+- [x] Add START-HERE portable ZIP onboarding
+- [x] Clarify final RC trust, safety, and passive-inspection wording
 
 ---
 
@@ -44,6 +47,7 @@
 
 - [x] Simplify startup around Docker Compose defaults
 - [x] Add Docker Compose validation service
+- [x] Polish portable ZIP onboarding flow
 - [ ] Add screenshots to README
 - [ ] Evaluate packaging options (.deb, Windows, macOS)
 
