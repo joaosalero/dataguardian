@@ -1,0 +1,67 @@
+DataGuardian - Start Here
+=========================
+
+DataGuardian is a local Docker-first inspection tool for suspicious files and
+URLs. It runs on your computer through Docker Compose.
+
+What to run first
+-----------------
+
+Windows:
+  1. Extract the ZIP first. Do not run from inside the compressed ZIP viewer.
+  2. Start Docker Desktop and wait until it says Docker is running.
+  3. Double-click start-dataguardian.bat.
+
+Linux or macOS:
+  1. Extract the ZIP first.
+  2. Start Docker Desktop or the Docker service.
+  3. Open a terminal in this folder.
+  4. Run: ./start-dataguardian.sh
+
+What the launchers do
+---------------------
+
+- Check that Docker and Docker Compose are available.
+- Run the normal Docker Compose startup commands in this folder.
+- Wait for the backend and frontend to become ready.
+- Show http://localhost:3000 and ask before opening a browser.
+
+What the launchers do NOT do
+----------------------------
+
+- They do not install DataGuardian.
+- They do not install or start system services.
+- They do not change system settings.
+- They do not replace Docker or run a separate runtime.
+- They do not send telemetry.
+
+Files beginners should use
+--------------------------
+
+- START-HERE.txt: this file.
+- start-dataguardian.bat: Windows launcher.
+- start-dataguardian.sh: Linux/macOS launcher.
+- README.md: full setup, recovery, and project notes.
+
+Files beginners usually should not edit
+---------------------------------------
+
+- docker-compose.yml
+- backend-go/
+- frontend/
+- scripts/
+- security/
+
+Recovery
+--------
+
+If startup fails:
+  1. Make sure Docker Desktop or the Docker service is running.
+  2. Make sure ports 3000, 8000, and 5434 are not used by another app.
+  3. Restart without deleting data: docker compose down
+  4. Run the launcher again.
+  5. Inspect logs if needed: docker compose logs backend-go frontend
+
+Reset local data only if you intentionally want to remove the local database
+and stored analysis files:
+  docker compose down -v

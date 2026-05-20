@@ -7,6 +7,8 @@ set "APP_URL=http://localhost:3000"
 cd /d "%ROOT_DIR%"
 
 echo [DataGuardian] Starting DataGuardian
+echo [DataGuardian] If you downloaded a ZIP, make sure it was extracted first.
+echo [DataGuardian] Keep this launcher in the DataGuardian folder.
 echo [DataGuardian] This helper only runs Docker Compose commands in this folder.
 echo [DataGuardian] It does not install services or change system settings.
 echo [DataGuardian] This may take a few minutes the first time while Docker builds images.
@@ -16,6 +18,7 @@ if errorlevel 1 (
   echo [DataGuardian] Docker was not found.
   echo [DataGuardian] Install Docker Desktop, then run this launcher again:
   echo [DataGuardian] https://docs.docker.com/desktop/setup/install/windows-install/
+  echo [DataGuardian] For beginner help, open START-HERE.txt.
   pause
   exit /b 1
 )
@@ -70,6 +73,7 @@ echo [DataGuardian] DataGuardian started correctly.
 echo [DataGuardian] App: %APP_URL%
 echo [DataGuardian] Backend health: http://localhost:8000/health
 echo [DataGuardian] Demo users: admin / admin123 or test / test123
+echo [DataGuardian] Help: START-HERE.txt or README.md
 echo.
 pause
 exit /b 0
@@ -125,6 +129,7 @@ exit /b 1
 echo [DataGuardian] Docker is installed, but the Docker daemon is not reachable.
 echo [DataGuardian] Start Docker Desktop yourself, wait until it says Docker is running, then run this launcher again.
 echo [DataGuardian] No Docker process was started by this helper.
+echo [DataGuardian] For beginner help, open START-HERE.txt.
 pause
 exit /b 1
 
@@ -134,6 +139,7 @@ echo [DataGuardian] Startup stopped because a required port is busy.
 echo [DataGuardian] DataGuardian uses ports 3000, 8000, and 5434.
 echo [DataGuardian] Close the other program, or run this command to inspect containers:
 echo [DataGuardian] docker compose ps
+echo [DataGuardian] For recovery help, open START-HERE.txt.
 pause
 exit /b 1
 
@@ -143,6 +149,7 @@ echo [DataGuardian] Docker Compose could not start the stack.
 echo [DataGuardian] Try: docker compose down
 echo [DataGuardian] Then run this launcher again.
 echo [DataGuardian] For details: docker compose logs backend-go frontend
+echo [DataGuardian] For beginner help, open START-HERE.txt.
 pause
 exit /b 1
 
@@ -152,5 +159,6 @@ echo [DataGuardian] The containers started, but the app did not become ready in 
 echo [DataGuardian] Try: docker compose logs backend-go frontend
 echo [DataGuardian] Then run: docker compose down
 echo [DataGuardian] After that, run this launcher again.
+echo [DataGuardian] For beginner help, open START-HERE.txt.
 pause
 exit /b 1
