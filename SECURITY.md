@@ -28,5 +28,8 @@ This project handles authentication, audit data, and project isolation. Any issu
 - Data leakage
 - Multi-tenant isolation flaws
 - Injection vulnerabilities
+- Unsafe download, preview, or artifact deletion access
+- Path traversal or unsafe file handling
+- Unauthorized access to operator-only storage information
 
 is considered critical.

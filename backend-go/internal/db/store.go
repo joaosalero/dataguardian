@@ -17,6 +17,7 @@ type User struct {
 	ID             int64
 	Email          string
 	HashedPassword string
+	IsAdmin        bool
 	CreatedAt      time.Time
 }
 
@@ -190,9 +191,9 @@ func (s *Store) UserByEmail(ctx context.Context, email string) (User, error) {
 	var user User
 	err := s.db.QueryRowContext(
 		ctx,
-		`SELECT id, email, hashed_password, created_at FROM users WHERE email = $1`,
+		`SELECT id, email, hashed_password, is_admin, created_at FROM users WHERE email = $1`,
 		email,
-	).Scan(&user.ID, &user.Email, &user.HashedPassword, &user.CreatedAt)
+	).Scan(&user.ID, &user.Email, &user.HashedPassword, &user.IsAdmin, &user.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
@@ -203,9 +204,9 @@ func (s *Store) UserByID(ctx context.Context, id int64) (User, error) {
 	var user User
 	err := s.db.QueryRowContext(
 		ctx,
-		`SELECT id, email, hashed_password, created_at FROM users WHERE id = $1`,
+		`SELECT id, email, hashed_password, is_admin, created_at FROM users WHERE id = $1`,
 		id,
-	).Scan(&user.ID, &user.Email, &user.HashedPassword, &user.CreatedAt)
+	).Scan(&user.ID, &user.Email, &user.HashedPassword, &user.IsAdmin, &user.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
@@ -222,11 +223,11 @@ func (s *Store) CreateUser(ctx context.Context, email string, hashedPassword str
 		ctx,
 		`INSERT INTO users (email, hashed_password, tenant_id)
 		 VALUES ($1, $2, $3)
-		 RETURNING id, email, hashed_password, created_at`,
+		 RETURNING id, email, hashed_password, is_admin, created_at`,
 		email,
 		hashedPassword,
 		tenantValue,
-	).Scan(&user.ID, &user.Email, &user.HashedPassword, &user.CreatedAt)
+	).Scan(&user.ID, &user.Email, &user.HashedPassword, &user.IsAdmin, &user.CreatedAt)
 	return user, err
 }
 

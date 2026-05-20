@@ -22,6 +22,8 @@ type dataStore interface {
 	CompleteAnalysis(ctx context.Context, analysisID int64, summary string) (db.Analysis, error)
 	GetAnalysisByID(ctx context.Context, userID int64, analysisID int64) (db.Analysis, error)
 	ListAnalysesByProject(ctx context.Context, userID int64, projectID int64) ([]db.Analysis, error)
+	ListAnalysesForUser(ctx context.Context, userID int64, filter db.AnalysisListFilter) ([]db.AnalysisListRow, int, error)
+	DeleteAnalysis(ctx context.Context, userID int64, analysisID int64) error
 	CreateFile(ctx context.Context, file db.File) (db.File, error)
 	FileByAnalysisID(ctx context.Context, analysisID int64) (db.File, error)
 	CreateURLTarget(ctx context.Context, target db.URLTarget) (db.URLTarget, error)

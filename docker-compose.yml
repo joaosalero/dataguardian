@@ -21,6 +21,8 @@ services:
     build:
       context: ./backend-go
     container_name: dataguardian_backend_go
+    init: true
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
@@ -32,6 +34,7 @@ services:
       AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-dataguardian_session}
       COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
       STORAGE_DIR: ${STORAGE_DIR:-/data/uploads}
+      STORAGE_ORPHAN_RETENTION_HOURS: ${STORAGE_ORPHAN_RETENTION_HOURS:-24}
       GO_BACKEND_ADDR: ${GO_BACKEND_ADDR:-0.0.0.0:8000}
     ports:
       - "8000:8000"
@@ -41,6 +44,7 @@ services:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
+      start_period: 10s
       retries: 12
 
   frontend:
@@ -50,6 +54,8 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
         NEXT_PUBLIC_ENVIRONMENT: ${NEXT_PUBLIC_ENVIRONMENT:-dev}
     container_name: dataguardian_frontend
+    init: true
+    restart: unless-stopped
     depends_on:
       backend-go:
         condition: service_healthy
@@ -62,6 +68,7 @@ services:
       test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/login').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
       interval: 10s
       timeout: 5s
+      start_period: 10s
       retries: 12
 
   validation:

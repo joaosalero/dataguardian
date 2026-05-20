@@ -58,6 +58,23 @@ type AnalysisListItem struct {
 	CreatedAt  time.Time         `json:"createdAt"`
 }
 
+// AnalysisPagination describes the current page of history results.
+type AnalysisPagination struct {
+	Page        int  `json:"page"`
+	PageSize    int  `json:"pageSize"`
+	TotalItems  int  `json:"totalItems"`
+	TotalPages  int  `json:"totalPages"`
+	HasNext     bool `json:"hasNext"`
+	HasPrevious bool `json:"hasPrevious"`
+}
+
+// StorageSummaryResponse describes local artifact storage without exposing paths.
+type StorageSummaryResponse struct {
+	FileCount            int   `json:"fileCount"`
+	TotalBytes           int64 `json:"totalBytes"`
+	OrphanRetentionHours int   `json:"orphanRetentionHours"`
+}
+
 // AnalysisFileReference describes the original file in an analysis response.
 type AnalysisFileReference struct {
 	ID               int64   `json:"id"`

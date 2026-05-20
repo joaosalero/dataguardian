@@ -30,6 +30,32 @@ type AnalysisListItem = {
   createdAt: string;
 };
 
+type AnalysisPagination = {
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrevious: boolean;
+};
+
+type AnalysisFilters = {
+  inputType: "" | "FILE" | "URL";
+  riskLevel: "" | "LOW" | "MEDIUM" | "HIGH";
+  status: "" | "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
+};
+
+type StorageSummary = {
+  fileCount: number;
+  totalBytes: number;
+  orphanRetentionHours: number;
+};
+
+type UserProfile = {
+  email: string;
+  isAdmin?: boolean;
+};
+
 type AnalysisFinding = {
   id: number;
   code: string;
@@ -55,6 +81,12 @@ type AnalysisDetail = {
   inputType: "FILE" | "URL";
   status: string;
   summary: string;
+  file?: null | {
+    originalFilename: string;
+    mimeType: string;
+    sizeBytes: number;
+    checksumSha256: string;
+  };
   findings: AnalysisFinding[];
   metadata: {
     entries: MetadataEntry[];
@@ -100,6 +132,20 @@ export default function DashboardPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [audits, setAudits] = useState<Audit[]>([]);
   const [analyses, setAnalyses] = useState<AnalysisListItem[]>([]);
+  const [analysisPagination, setAnalysisPagination] = useState<AnalysisPagination>({
+    page: 1,
+    pageSize: 10,
+    totalItems: 0,
+    totalPages: 0,
+    hasNext: false,
+    hasPrevious: false,
+  });
+  const [analysisFilters, setAnalysisFilters] = useState<AnalysisFilters>({
+    inputType: "",
+    riskLevel: "",
+    status: "",
+  });
+  const [storageSummary, setStorageSummary] = useState<StorageSummary | null>(null);
   const [selectedAnalysis, setSelectedAnalysis] = useState<AnalysisDetail | null>(null);
   const [selectedProjectID, setSelectedProjectID] = useState<number | null>(null);
   const [projectName, setProjectName] = useState("");
@@ -112,9 +158,14 @@ export default function DashboardPage() {
   const [analyzingFile, setAnalyzingFile] = useState(false);
   const [analyzingURL, setAnalyzingURL] = useState(false);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+  const [deletingAnalysisID, setDeletingAnalysisID] = useState<number | null>(null);
+  const [downloadingOriginalFile, setDownloadingOriginalFile] = useState(false);
   const [downloadingCleanFile, setDownloadingCleanFile] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [originalFileError, setOriginalFileError] = useState("");
   const [cleanFileError, setCleanFileError] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectID) ?? null,
@@ -124,23 +175,38 @@ export default function DashboardPage() {
     () => selectedAnalysis?.metadata.entries.filter((entry) => entry.key !== "safe_preview_text") ?? [],
     [selectedAnalysis],
   );
+  const hasAnalysisFilters = analysisFilters.inputType !== "" || analysisFilters.riskLevel !== "" || analysisFilters.status !== "";
+
+  function redirectToExpiredLogin() {
+    router.push("/login?reason=session-expired");
+  }
+
+  function handleExpiredSession(response: Response) {
+    if (response.status !== 401) {
+      return false;
+    }
+    redirectToExpiredLogin();
+    return true;
+  }
 
   useEffect(() => {
     async function loadDashboard() {
       setError("");
+      setNotice("");
       setLoading(true);
 
       try {
         const profileResponse = await apiFetch("/auth/me");
         if (profileResponse.status === 401) {
-          router.push("/login");
+          redirectToExpiredLogin();
           return;
         }
         if (!profileResponse.ok) {
           throw new Error(await parseError(profileResponse));
         }
-        const profile = (await profileResponse.json()) as { email: string };
+        const profile = (await profileResponse.json()) as UserProfile;
         setEmail(profile.email);
+        setIsAdmin(Boolean(profile.isAdmin));
 
         const loadedProjects = await ensureDefaultProject(await fetchProjects());
         const firstProjectID = loadedProjects[0]?.id ?? null;
@@ -150,7 +216,10 @@ export default function DashboardPage() {
         } else {
           setAudits([]);
         }
-        await fetchAnalyses();
+        await fetchAnalyses({ page: 1 });
+        if (profile.isAdmin) {
+          await fetchStorageSummary();
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not load dashboard.");
       } finally {
@@ -174,8 +243,7 @@ export default function DashboardPage() {
 
   async function fetchProjects() {
     const response = await apiFetch("/projects");
-    if (response.status === 401) {
-      router.push("/login");
+    if (handleExpiredSession(response)) {
       return [];
     }
     if (!response.ok) {
@@ -198,6 +266,9 @@ export default function DashboardPage() {
         target: "local-analysis",
       }),
     });
+    if (handleExpiredSession(response)) {
+      return [];
+    }
     if (!response.ok) {
       throw new Error(await parseError(response));
     }
@@ -208,6 +279,9 @@ export default function DashboardPage() {
 
   async function fetchAudits(projectID: number) {
     const response = await apiFetch(`/projects/${projectID}/audits`);
+    if (handleExpiredSession(response)) {
+      return;
+    }
     if (!response.ok) {
       throw new Error(await parseError(response));
     }
@@ -215,21 +289,63 @@ export default function DashboardPage() {
     setAudits(payload.audits ?? []);
   }
 
-  async function fetchAnalyses() {
-    const response = await apiFetch("/analyses");
+  async function fetchAnalyses(options?: { page?: number; filters?: AnalysisFilters }) {
+    const page = options?.page ?? analysisPagination.page;
+    const filters = options?.filters ?? analysisFilters;
+    const query = new URLSearchParams({
+      page: String(page),
+      pageSize: String(analysisPagination.pageSize),
+    });
+    if (filters.inputType) {
+      query.set("inputType", filters.inputType);
+    }
+    if (filters.riskLevel) {
+      query.set("riskLevel", filters.riskLevel);
+    }
+    if (filters.status) {
+      query.set("status", filters.status);
+    }
+    const response = await apiFetch(`/analyses?${query.toString()}`);
+    if (handleExpiredSession(response)) {
+      return;
+    }
     if (!response.ok) {
       throw new Error(await parseError(response));
     }
-    const payload = (await response.json()) as { analyses: AnalysisListItem[] };
+    const payload = (await response.json()) as { analyses: AnalysisListItem[]; pagination?: AnalysisPagination };
     setAnalyses(payload.analyses ?? []);
+    if (payload.pagination) {
+      setAnalysisPagination(payload.pagination);
+    }
+  }
+
+  async function fetchStorageSummary() {
+    const response = await apiFetch("/storage");
+    if (handleExpiredSession(response)) {
+      return;
+    }
+    if (response.status === 403 || !response.ok) {
+      setStorageSummary(null);
+      return;
+    }
+    setStorageSummary((await response.json()) as StorageSummary);
   }
 
   async function selectAnalysis(analysisID: number) {
     setError("");
+    setOriginalFileError("");
     setCleanFileError("");
     setLoadingAnalysis(true);
     try {
       const response = await apiFetch(`/analyses/${analysisID}`);
+      if (handleExpiredSession(response)) {
+        return;
+      }
+      if (response.status === 404) {
+        setSelectedAnalysis(null);
+        await fetchAnalyses();
+        throw new Error("This analysis is no longer available.");
+      }
       if (!response.ok) {
         throw new Error(await parseError(response));
       }
@@ -244,6 +360,7 @@ export default function DashboardPage() {
   async function createProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setNotice("");
     setSaving(true);
 
     try {
@@ -254,6 +371,9 @@ export default function DashboardPage() {
           target: projectTarget,
         }),
       });
+      if (handleExpiredSession(response)) {
+        return;
+      }
       if (!response.ok) {
         throw new Error(await parseError(response));
       }
@@ -263,6 +383,7 @@ export default function DashboardPage() {
       setAudits([]);
       setProjectName("");
       setProjectTarget("");
+      setNotice("Project created.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create project.");
     } finally {
@@ -275,6 +396,10 @@ export default function DashboardPage() {
       setCleanFileError("No sanitized file is available for this analysis.");
       return;
     }
+    if (selectedAnalysis.cleanFile.cleaningStatus !== "COMPLETED") {
+      setCleanFileError("The sanitized file is not available because cleaning did not complete.");
+      return;
+    }
     setCleanFileError("");
     setDownloadingCleanFile(true);
 
@@ -282,9 +407,11 @@ export default function DashboardPage() {
       const response = await fetch(`${API_BASE_URL}/analyses/${selectedAnalysis.analysisId}/clean-file`, {
         credentials: "include",
       });
-      if (response.status === 401) {
-        router.push("/login");
+      if (handleExpiredSession(response)) {
         return;
+      }
+      if (response.status === 404) {
+        throw new Error("The sanitized file is no longer available for this analysis.");
       }
       if (!response.ok) {
         throw new Error(await parseError(response));
@@ -308,6 +435,52 @@ export default function DashboardPage() {
     }
   }
 
+  async function downloadOriginalFile() {
+    if (!selectedAnalysis?.file) {
+      setOriginalFileError("No original file is available for this analysis.");
+      return;
+    }
+    if (
+      selectedAnalysis.riskScore.level === "HIGH" &&
+      !window.confirm("This file is high risk. Download the original file anyway?")
+    ) {
+      return;
+    }
+    setOriginalFileError("");
+    setDownloadingOriginalFile(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/analyses/${selectedAnalysis.analysisId}/file`, {
+        credentials: "include",
+      });
+      if (handleExpiredSession(response)) {
+        return;
+      }
+      if (response.status === 404) {
+        throw new Error("The original file is no longer available for this analysis.");
+      }
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
+      const blob = await response.blob();
+      if (blob.size === 0) {
+        throw new Error("The original file response was empty.");
+      }
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = selectedAnalysis.file.originalFilename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setOriginalFileError(err instanceof Error ? err.message : "Could not download original file.");
+    } finally {
+      setDownloadingOriginalFile(false);
+    }
+  }
+
   async function selectProject(projectID: number) {
     setError("");
     setSelectedProjectID(projectID);
@@ -323,17 +496,22 @@ export default function DashboardPage() {
       return;
     }
     setError("");
+    setNotice("");
     setAuditing(true);
 
     try {
       const response = await apiFetch(`/projects/${selectedProjectID}/audit`, {
         method: "POST",
       });
+      if (handleExpiredSession(response)) {
+        return;
+      }
       if (!response.ok) {
         throw new Error(await parseError(response));
       }
       const audit = (await response.json()) as Audit;
       setAudits((current) => [audit, ...current]);
+      setNotice("Audit completed.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not run audit.");
     } finally {
@@ -347,6 +525,7 @@ export default function DashboardPage() {
       return;
     }
     setError("");
+    setNotice("");
     setAnalyzingFile(true);
 
     try {
@@ -360,11 +539,18 @@ export default function DashboardPage() {
         credentials: "include",
         body: formData,
       });
+      if (handleExpiredSession(response)) {
+        return;
+      }
       if (!response.ok) {
         throw new Error(await parseError(response));
       }
       setAnalysisFile(null);
-      await fetchAnalyses();
+      await fetchAnalyses({ page: 1 });
+      if (isAdmin) {
+        await fetchStorageSummary();
+      }
+      setNotice("File analysis completed.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not analyze file.");
     } finally {
@@ -378,6 +564,7 @@ export default function DashboardPage() {
       return;
     }
     setError("");
+    setNotice("");
     setAnalyzingURL(true);
 
     try {
@@ -391,15 +578,77 @@ export default function DashboardPage() {
           },
         }),
       });
+      if (handleExpiredSession(response)) {
+        return;
+      }
       if (!response.ok) {
         throw new Error(await parseError(response));
       }
       setAnalysisURL("");
-      await fetchAnalyses();
+      await fetchAnalyses({ page: 1 });
+      if (isAdmin) {
+        await fetchStorageSummary();
+      }
+      setNotice("URL analysis completed.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not analyze URL.");
     } finally {
       setAnalyzingURL(false);
+    }
+  }
+
+  async function updateAnalysisFilters(nextFilters: AnalysisFilters) {
+    setAnalysisFilters(nextFilters);
+    setError("");
+    setNotice("");
+    try {
+      await fetchAnalyses({ page: 1, filters: nextFilters });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load analyses.");
+    }
+  }
+
+  async function changeAnalysisPage(page: number) {
+    setError("");
+    setNotice("");
+    try {
+      await fetchAnalyses({ page });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load analyses.");
+    }
+  }
+
+  async function deleteAnalysis(analysisID: number) {
+    if (!window.confirm("Delete this analysis and its stored files? This cannot be undone.")) {
+      return;
+    }
+    setError("");
+    setNotice("");
+    setDeletingAnalysisID(analysisID);
+    try {
+      const response = await apiFetch(`/analyses/${analysisID}`, { method: "DELETE" });
+      if (handleExpiredSession(response)) {
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
+      if (selectedAnalysis?.analysisId === analysisID) {
+        setSelectedAnalysis(null);
+      }
+      const nextPage =
+        analyses.length === 1 && analysisPagination.page > 1
+          ? analysisPagination.page - 1
+          : analysisPagination.page;
+      await fetchAnalyses({ page: nextPage });
+      if (isAdmin) {
+        await fetchStorageSummary();
+      }
+      setNotice("Analysis deleted.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete analysis.");
+    } finally {
+      setDeletingAnalysisID(null);
     }
   }
 
@@ -430,6 +679,11 @@ export default function DashboardPage() {
         {error ? (
           <p className="mb-5 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
+          </p>
+        ) : null}
+        {notice ? (
+          <p className="mb-5 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+            {notice}
           </p>
         ) : null}
 
@@ -611,9 +865,61 @@ export default function DashboardPage() {
             <div>
               <h2 className="text-base font-semibold text-gray-950">Analysis history</h2>
               <p className="mt-1 text-sm text-gray-600">
-                {loading ? "Loading analyses." : `${analyses.length} analysis run${analyses.length === 1 ? "" : "s"} available.`}
+                {loading
+                  ? "Loading analyses."
+                  : `${analysisPagination.totalItems} matching analysis run${analysisPagination.totalItems === 1 ? "" : "s"}.`}
               </p>
             </div>
+          </div>
+
+          <div className="mt-5 grid gap-3 md:grid-cols-4">
+            <label className="block">
+              <span className="text-xs font-semibold uppercase text-gray-500">Type</span>
+              <select
+                className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900"
+                onChange={(event) => updateAnalysisFilters({ ...analysisFilters, inputType: event.target.value as AnalysisFilters["inputType"] })}
+                value={analysisFilters.inputType}
+              >
+                <option value="">All types</option>
+                <option value="FILE">Files</option>
+                <option value="URL">URLs</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold uppercase text-gray-500">Risk</span>
+              <select
+                className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900"
+                onChange={(event) => updateAnalysisFilters({ ...analysisFilters, riskLevel: event.target.value as AnalysisFilters["riskLevel"] })}
+                value={analysisFilters.riskLevel}
+              >
+                <option value="">All risks</option>
+                <option value="LOW">Low</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="HIGH">High</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold uppercase text-gray-500">Status</span>
+              <select
+                className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900"
+                onChange={(event) => updateAnalysisFilters({ ...analysisFilters, status: event.target.value as AnalysisFilters["status"] })}
+                value={analysisFilters.status}
+              >
+                <option value="">All statuses</option>
+                <option value="COMPLETED">Completed</option>
+                <option value="PROCESSING">Processing</option>
+                <option value="FAILED">Failed</option>
+                <option value="PENDING">Pending</option>
+              </select>
+            </label>
+            {isAdmin ? (
+              <div className="rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                <span className="block text-xs font-semibold uppercase text-gray-500">Storage</span>
+                {storageSummary
+                  ? `${storageSummary.fileCount} file${storageSummary.fileCount === 1 ? "" : "s"} - ${formatBytes(storageSummary.totalBytes)}`
+                  : "Not available"}
+              </div>
+            ) : null}
           </div>
 
           {analyses.length > 0 ? (
@@ -625,7 +931,7 @@ export default function DashboardPage() {
                     <th className="py-2 pr-4 font-semibold">Risk</th>
                     <th className="py-2 pr-4 font-semibold">Status</th>
                     <th className="py-2 pr-4 font-semibold">Created</th>
-                    <th className="py-2 font-semibold">Action</th>
+                    <th className="py-2 font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -640,14 +946,24 @@ export default function DashboardPage() {
                       <td className="py-3 pr-4 text-gray-700">{analysis.status}</td>
                       <td className="py-3 pr-4 text-gray-600">{formatDate(analysis.createdAt)}</td>
                       <td className="py-3">
-                        <button
-                          className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={loadingAnalysis}
-                          onClick={() => selectAnalysis(analysis.analysisId)}
-                          type="button"
-                        >
-                          View
-                        </button>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={loadingAnalysis}
+                            onClick={() => selectAnalysis(analysis.analysisId)}
+                            type="button"
+                          >
+                            View
+                          </button>
+                          <button
+                            className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={deletingAnalysisID === analysis.analysisId}
+                            onClick={() => deleteAnalysis(analysis.analysisId)}
+                            type="button"
+                          >
+                            {deletingAnalysisID === analysis.analysisId ? "Deleting..." : "Delete"}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -656,8 +972,38 @@ export default function DashboardPage() {
             </div>
           ) : !loading ? (
             <p className="mt-5 rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
-              No file or URL analyses have been created yet.
+              {analysisPagination.totalItems > 0
+                ? "No analyses are shown on this page. Use Previous or adjust the filters."
+                : hasAnalysisFilters
+                  ? "No analyses match the current filters. Try clearing one filter."
+                  : "No analyses yet. Upload a file or submit a URL to create the first result."}
             </p>
+          ) : null}
+
+          {analysisPagination.totalPages > 0 ? (
+            <div className="mt-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+              <p className="text-sm text-gray-600">
+                Page {analysisPagination.page} of {analysisPagination.totalPages}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={!analysisPagination.hasPrevious}
+                  onClick={() => changeAnalysisPage(analysisPagination.page - 1)}
+                  type="button"
+                >
+                  Previous
+                </button>
+                <button
+                  className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={!analysisPagination.hasNext}
+                  onClick={() => changeAnalysisPage(analysisPagination.page + 1)}
+                  type="button"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           ) : null}
         </section>
 
@@ -728,6 +1074,94 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            {loadingAnalysis ? (
+              <p className="mt-5 rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                Loading analysis details.
+              </p>
+            ) : null}
+
+            {selectedAnalysis.inputType === "URL" && selectedAnalysis.file ? (
+              <div className="mt-5 rounded-lg border border-gray-200 p-4">
+                <h3 className="text-sm font-semibold text-gray-950">Remote File Inspection</h3>
+                <div className="mt-3 space-y-3 text-sm text-gray-700">
+                  <dl className="grid gap-2 sm:grid-cols-3">
+                    <div>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">Source</dt>
+                      <dd className="mt-1 text-gray-900">Downloaded from submitted URL</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">MIME type</dt>
+                      <dd className="mt-1 break-words text-gray-900">{selectedAnalysis.file.mimeType}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">File size</dt>
+                      <dd className="mt-1 text-gray-900">{formatBytes(selectedAnalysis.file.sizeBytes)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">Risk level</dt>
+                      <dd className="mt-1 text-gray-900">{selectedAnalysis.riskScore.level}</dd>
+                    </div>
+                  </dl>
+                  <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    This remote file was fetched by the backend and inspected before any local download.
+                  </p>
+                  {selectedAnalysis.riskScore.level === "HIGH" ? (
+                    <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                      High risk: review findings carefully before downloading the original remote file.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="mt-5 rounded-lg border border-gray-200 p-4">
+              <h3 className="text-sm font-semibold text-gray-950">
+                {originalFileHeading(selectedAnalysis)}
+              </h3>
+              {selectedAnalysis.file ? (
+                <div className="mt-3 space-y-3 text-sm text-gray-700">
+                  <dl className="grid gap-2 sm:grid-cols-3">
+                    <div>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">Source</dt>
+                      <dd className="mt-1 text-gray-900">{originalFileSource(selectedAnalysis)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">Filename</dt>
+                      <dd className="mt-1 break-words text-gray-900">{selectedAnalysis.file.originalFilename}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">MIME type</dt>
+                      <dd className="mt-1 break-words text-gray-900">{selectedAnalysis.file.mimeType}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">Size</dt>
+                      <dd className="mt-1 text-gray-900">{formatBytes(selectedAnalysis.file.sizeBytes)}</dd>
+                    </div>
+                  </dl>
+                  <p className={`rounded-md border px-3 py-2 text-sm ${selectedAnalysis.riskScore.level === "HIGH" ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+                    {originalFileWarning(selectedAnalysis)}
+                  </p>
+                  {originalFileError ? (
+                    <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                      {originalFileError}
+                    </p>
+                  ) : null}
+                  <button
+                    className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={downloadingOriginalFile || !selectedAnalysis.file}
+                    onClick={downloadOriginalFile}
+                    type="button"
+                  >
+                    {downloadingOriginalFile ? "Downloading..." : "Download Original"}
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-2 rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                  No original file download is available for this analysis. URL-only analyses do not store a downloadable file unless the response is a supported file type.
+                </p>
+              )}
+            </div>
+
             <div className="mt-5 rounded-lg border border-gray-200 p-4">
               <h3 className="text-sm font-semibold text-gray-950">Safe Preview</h3>
               <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -779,11 +1213,27 @@ export default function DashboardPage() {
                     </div>
                   </dl>
                   <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                    This version has metadata removed. It does NOT guarantee the file is safe.
+                    This is a separate metadata-cleaned copy. It may still contain unsafe content and does not guarantee malware removal.
                   </p>
-                  <p className="text-xs text-gray-500">
-                    Removed metadata: {selectedAnalysis.cleanFile.removedMetadataKeys.length > 0 ? selectedAnalysis.cleanFile.removedMetadataKeys.join(", ") : "none recorded"}
-                  </p>
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-gray-500">Metadata removed</p>
+                    {selectedAnalysis.cleanFile.removedMetadataKeys.length > 0 ? (
+                      <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                        {describeRemovedMetadata(selectedAnalysis.cleanFile.removedMetadataKeys).map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-sm text-gray-600">No supported removable metadata was found in this file.</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-gray-500">Not removed</p>
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                      <li>Malware, scripts, embedded content, and document behavior are not removed.</li>
+                      <li>Metadata outside the current PDF/JPEG cleanup rules may remain.</li>
+                    </ul>
+                  </div>
                   {cleanFileError ? (
                     <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                       {cleanFileError}
@@ -795,11 +1245,13 @@ export default function DashboardPage() {
                     onClick={downloadCleanFile}
                     type="button"
                   >
-                    {downloadingCleanFile ? "Downloading..." : "Download Clean File"}
+                    {downloadingCleanFile ? "Downloading..." : "Download Sanitized Copy"}
                   </button>
                 </div>
               ) : (
-                <p className="mt-2 text-sm text-gray-600">No clean file is available for this analysis.</p>
+                <p className="mt-2 text-sm text-gray-600">
+                  No sanitized copy is available. This format may be unsupported, or no metadata-cleaned output was generated.
+                </p>
               )}
             </div>
           </section>
@@ -847,4 +1299,48 @@ function formatBytes(value: number) {
     return `${(value / 1024).toFixed(1)} KB`;
   }
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function originalFileHeading(analysis: AnalysisDetail) {
+  return analysis.inputType === "URL" ? "Original Remote File" : "Original Uploaded File";
+}
+
+function originalFileSource(analysis: AnalysisDetail) {
+  return analysis.inputType === "URL" ? "Remote URL response" : "Local upload";
+}
+
+function originalFileWarning(analysis: AnalysisDetail) {
+  const source = analysis.inputType === "URL" ? "remote file" : "uploaded file";
+  if (analysis.riskScore.level === "HIGH") {
+    return `High risk: this original ${source} is preserved unchanged. Review findings before downloading or opening it locally.`;
+  }
+  return `This original ${source} is preserved unchanged. Review the preview, findings, and risk score before downloading or opening it locally.`;
+}
+
+function describeRemovedMetadata(keys: string[]) {
+  const descriptions = new Set<string>();
+  keys.forEach((key) => {
+    switch (key) {
+      case "exif":
+        descriptions.add("EXIF metadata removed, including GPS/location fields when present.");
+        break;
+      case "gps":
+        descriptions.add("GPS/location metadata removed.");
+        break;
+      case "author":
+        descriptions.add("Author metadata removed.");
+        break;
+      case "producer":
+        descriptions.add("Producer/tool metadata removed.");
+        break;
+      case "creation_date":
+      case "timestamp":
+      case "datetime":
+        descriptions.add("Timestamp metadata removed.");
+        break;
+      default:
+        descriptions.add(`${key.replaceAll("_", " ")} removed.`);
+    }
+  });
+  return Array.from(descriptions);
 }

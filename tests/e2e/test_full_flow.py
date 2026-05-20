@@ -126,12 +126,14 @@ def run_go_auth_flow(page: Page) -> None:
     expect(page.get_by_text("author", exact=True)).to_be_visible()
     expect(page.get_by_role("heading", name="Safe Preview")).to_be_visible()
     expect(page.get_by_text("This preview is rendered in isolated safe mode. Active content is not executed.")).to_be_visible()
+    expect(page.get_by_role("heading", name="Original File")).to_be_visible()
+    expect(page.get_by_role("button", name="Download Original")).to_be_visible()
     expect(page.get_by_role("heading", name="Sanitized File")).to_be_visible()
     expect(page.get_by_text("e2e-sample-clean.pdf")).to_be_visible()
-    expect(page.get_by_text("This version has metadata removed. It does NOT guarantee the file is safe.")).to_be_visible()
-    expect(page.get_by_role("button", name="Download Clean File")).to_be_visible()
+    expect(page.get_by_text("This sanitized copy has selected metadata removed")).to_be_visible()
+    expect(page.get_by_role("button", name="Download Sanitized Copy")).to_be_visible()
     with page.expect_download() as download_info:
-        page.get_by_role("button", name="Download Clean File").click()
+        page.get_by_role("button", name="Download Sanitized Copy").click()
     download = download_info.value
     assert download.suggested_filename == "e2e-sample-clean.pdf"
 
