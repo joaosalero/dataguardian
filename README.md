@@ -477,9 +477,10 @@ Run the release smoke flow after the stack is up:
 
 The smoke flow checks backend health, frontend availability, login, dashboard
 availability, one file analysis, and one URL analysis. It uses the local demo
-admin account by default. Override `SMOKE_USER`, `SMOKE_PASSWORD`, or
-`SMOKE_URL` only when needed. Start the stack before running this command; in
-restricted networks, point `SMOKE_URL` at an allowed public HTTP/HTTPS URL.
+admin account and a small public IANA example-domain page by default. Override
+`SMOKE_USER`, `SMOKE_PASSWORD`, or `SMOKE_URL` only when needed. Start the stack
+before running this command; in restricted networks, point `SMOKE_URL` at an
+allowed public HTTP/HTTPS URL that passes SSRF protections.
 
 Run the lightweight release preflight before tagging:
 
@@ -674,9 +675,12 @@ details, and sanitized file details when available. Deleting an analysis removes
 the database record and its stored original/sanitized files after ownership
 validation. The Original File panel shows filename, MIME type, size, risk
 warning, and a mediated download button. High-risk originals require an explicit
-browser confirmation before download. The Sanitized File panel shows filename,
-size, cleaning status, metadata removed, sanitization limitations, and a
-separate sanitized-copy download button. The Safe Preview panel shows a static
+typed confirmation before download and state that passive inspection reduces
+exposure but does not guarantee malware detection. Remote-file analyses also
+state that the backend inspected the remote content before local download. The
+Sanitized File panel shows filename, size, cleaning status, metadata removed,
+sanitization limitations, and a separate sanitized-copy download button. The
+Safe Preview panel shows a static
 image or plain-text preview when one can be generated without executing active
 content. The history endpoint is scoped through the signed-in user's projects,
 so users only see analyses attached to projects they own. If a browser session
@@ -781,7 +785,7 @@ curl -i \
   -X POST http://localhost:8000/analyses \
   -b "dataguardian_session=<session-cookie>" \
   -H "Content-Type: application/json" \
-  -d '{"projectId":1,"inputType":"URL","url":{"originalUrl":"https://example.com"}}'
+  -d '{"projectId":1,"inputType":"URL","url":{"originalUrl":"https://www.iana.org/help/example-domains"}}'
 ```
 
 Current limits and behavior:

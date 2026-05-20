@@ -864,11 +864,34 @@ func storeAnalysisFile(storageDir string, checksum string, extension string, con
 	if extension != ".pdf" && extension != ".jpg" && extension != ".jpeg" && extension != ".png" && extension != ".txt" {
 		extension = ""
 	}
-	path := filepath.Join(storageDir, checksum+"-"+name+extension)
-	if err := writeStoredFile(path, content); err != nil {
+	filename := checksum + "-" + name + extension
+	path, ok := storedFilePathForWrite(storageDir, filename)
+	if !ok {
+		return "", errors.New("invalid storage path")
+	}
+	if err := writeStoredFile(storageDir, filename, content); err != nil {
 		return "", err
 	}
 	return path, nil
+}
+
+func storedFilePathForWrite(storageDir string, filename string) (string, bool) {
+	if strings.TrimSpace(filename) == "" || filepath.Base(filename) != filename {
+		return "", false
+	}
+	storageRoot, err := filepath.Abs(storageDir)
+	if err != nil {
+		return "", false
+	}
+	cleanPath, err := filepath.Abs(filepath.Join(storageRoot, filename))
+	if err != nil {
+		return "", false
+	}
+	relative, err := filepath.Rel(storageRoot, cleanPath)
+	if err != nil || relative == "." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || relative == ".." {
+		return "", false
+	}
+	return cleanPath, true
 }
 
 func storedFilePath(storageDir string, storedReference string) (string, bool) {
@@ -1096,16 +1119,16 @@ var ensureStorageDir = func(storageDir string) error {
 	return mkdirAll(storageDir)
 }
 
-var writeStoredFile = func(path string, content []byte) error {
-	return writeFile(path, content)
+var writeStoredFile = func(storageDir string, filename string, content []byte) error {
+	path, ok := storedFilePathForWrite(storageDir, filename)
+	if !ok {
+		return errors.New("invalid storage path")
+	}
+	return os.WriteFile(path, content, 0o600)
 }
 
 var mkdirAll = func(path string) error {
 	return os.MkdirAll(path, 0o700)
-}
-
-var writeFile = func(path string, content []byte) error {
-	return os.WriteFile(path, content, 0o600)
 }
 
 func randomHex(size int) (string, error) {

@@ -5,7 +5,7 @@ BACKEND_URL="${BACKEND_URL:-http://localhost:8000}"
 FRONTEND_URL="${FRONTEND_URL:-http://localhost:3000}"
 SMOKE_USER="${SMOKE_USER:-admin}"
 SMOKE_PASSWORD="${SMOKE_PASSWORD:-admin123}"
-SMOKE_URL="${SMOKE_URL:-https://example.com}"
+SMOKE_URL="${SMOKE_URL:-https://www.iana.org/help/example-domains}"
 
 COOKIE_JAR="$(mktemp)"
 SAMPLE_FILE="$(mktemp)"
