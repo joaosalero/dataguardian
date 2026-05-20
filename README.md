@@ -5,10 +5,9 @@
 ![Go](https://img.shields.io/badge/go-1.25-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-DataGuardian is a local-first security auditing and authentication platform
-slice. It is built to answer a practical question: how do you give teams a
-trustworthy foundation for reviewing sensitive data systems without turning the
-demo into a fragile toy?
+DataGuardian is a local-first security inspection platform for suspicious files
+and URLs. It is built to answer a practical question: how do you let a user
+inspect untrusted content before deciding whether to download or open it?
 
 The current release focuses on the production foundations that matter first:
 secure authentication, deterministic local execution, automated validation,
@@ -23,12 +22,13 @@ Core features are functional:
 - URL analysis (safe remote inspection)
 - Metadata extraction and classification
 - Deterministic findings and risk scoring
-- Clean file generation and authenticated sanitized-file download
+- Metadata-cleaned sanitized file generation and authenticated download
 
 Known limitations:
-- Pagination and filtering not implemented yet
-- Clean files remove selected metadata only; they are not a malware removal or
-  full content-disarm guarantee.
+- Sanitized files remove selected metadata only; they are not a malware removal
+  or full content-disarm guarantee.
+- Stored analysis files remain available for history and downloads. Startup
+  cleanup removes only old unreferenced storage files.
 
 ## What DataGuardian Does
 
@@ -42,12 +42,28 @@ DataGuardian is Docker-first. You do not need to install Go, Node.js, or
 PostgreSQL just to try the app. Docker starts the database, backend, and
 frontend together.
 
-Important sanitized-file warning: a clean file has selected metadata removed.
-It does NOT guarantee that the file is safe, malware-free, or fully disarmed.
+Important sanitized-file warning: a sanitized copy has selected metadata
+removed. It does NOT guarantee that the file is safe, malware-free, or fully
+disarmed.
 
 Important safe-preview warning: previews are static and read-only. Active file
 content, PDF JavaScript, website JavaScript, DOM behavior, and browser rendering
 are intentionally not executed.
+
+## Release Readiness Notes
+
+Supported uploads: PDF, JPEG, PNG, and plain text up to 10 MB.
+Supported safe previews: static JPEG/PNG images, plain text, and static PDF
+image previews. URL inspection is passive HTTP/HTTPS fetching only.
+
+DataGuardian stores original and sanitized analysis files so authenticated users
+can revisit results and download artifacts. On backend startup, unreferenced
+files older than `STORAGE_ORPHAN_RETENTION_HOURS` are removed; the default is
+24 hours. Set it to `0` to disable orphan cleanup. Referenced analysis artifacts
+remain available until the signed-in owner deletes the analysis.
+Docker keeps PostgreSQL data and stored analysis files in named volumes. Use
+`docker compose down -v` only when you intentionally want to remove that local
+state.
 
 ## Start Here
 
@@ -57,9 +73,27 @@ are intentionally not executed.
 - Git, so you can run `git clone`.
 - A terminal app.
 - A web browser.
+- Optional helper scripts and smoke validation also need `curl`.
 
 If `git` is not installed, install it from <https://git-scm.com/downloads> or
 use the package manager for your operating system.
+
+### One-Command Start
+
+After cloning the repository, start everything with:
+
+```bash
+docker compose up --build
+```
+
+When the services finish starting, open:
+
+```text
+http://localhost:3000
+```
+
+Docker starts PostgreSQL, the Go backend, and the Next.js frontend together.
+No Go, Node.js, Python, or PostgreSQL install is required for normal use.
 
 ### Linux Users
 
@@ -160,6 +194,25 @@ http://localhost:3000
 docker compose down
 ```
 
+The optional helper script also works on Linux and macOS:
+
+```bash
+./start.sh manual
+```
+
+It prints service readiness, the app URL, backend health URL, and local demo
+users before following backend/frontend logs. It requires `curl`; if `curl` is
+not installed, use `docker compose up --build` directly.
+
+After startup, run the release smoke check:
+
+```bash
+./scripts/smoke.sh
+```
+
+On Windows, run the same command from Git Bash, or use the Docker and browser
+checks listed below from PowerShell.
+
 ### Dashboard Walkthrough
 
 1. Open `http://localhost:3000`.
@@ -177,8 +230,18 @@ test  / test123
 5. To analyze a URL, type an `http` or `https` URL, then select `Analyze URL`.
 6. Open `Analysis history` and select `View` to inspect findings, metadata,
    explanations, risk score, and sanitized-file details.
-7. If a sanitized file is available, use `Download Clean File`. Remember: this
-   only removes selected metadata and does not prove the file is safe.
+7. Use `Download Original` only after reviewing the warning and findings. If a
+   sanitized file is available, use `Download Sanitized Copy` for the
+   metadata-cleaned copy. Sanitized copies are not malware removal.
+
+### Screenshots
+
+Screenshots are planned for the public README:
+
+- Login and registration
+- Dashboard and analysis history
+- Safe preview and findings
+- Original vs sanitized download panels
 
 ### Tests For Users
 
@@ -330,7 +393,10 @@ test  / test123
 
 No `.env` file is required for local use. Copy `.env.example` to `.env` only
 when overriding ports, credentials, cookie settings, or public frontend API
-URL.
+URL. For storage hygiene, `STORAGE_ORPHAN_RETENTION_HOURS` controls cleanup of
+old unreferenced storage files during backend startup. Invalid integer values,
+invalid backend addresses, and unsafe cookie combinations fail during startup
+with a configuration error.
 
 ### Manual Usage
 
@@ -403,6 +469,27 @@ Run the Docker health validation service after or during local startup:
 docker compose up --build validation
 ```
 
+Run the release smoke flow after the stack is up:
+
+```bash
+./scripts/smoke.sh
+```
+
+The smoke flow checks backend health, frontend availability, login, dashboard
+availability, one file analysis, and one URL analysis. It uses the local demo
+admin account by default. Override `SMOKE_USER`, `SMOKE_PASSWORD`, or
+`SMOKE_URL` only when needed. Start the stack before running this command; in
+restricted networks, point `SMOKE_URL` at an allowed public HTTP/HTTPS URL.
+
+Run the lightweight release preflight before tagging:
+
+```bash
+./scripts/release-check.sh
+```
+
+This checks required release files, shell helper syntax, and Docker Compose
+configuration without starting the stack.
+
 Install frontend dependencies:
 
 ```bash
@@ -414,6 +501,29 @@ Start services without following logs:
 
 ```bash
 ./scripts/up.sh
+```
+
+`scripts/up.sh` waits for backend/frontend readiness and prints the browser
+URL, backend health URL, and local demo users. On Windows, use the Docker
+Compose commands from PowerShell instead of the shell helper scripts.
+
+Rebuild after pulling updates:
+
+```bash
+docker compose up -d --build db backend-go frontend
+```
+
+Restart without rebuilding:
+
+```bash
+docker compose restart backend-go frontend
+```
+
+Reset local Docker data only when you intentionally want to remove the local
+database and stored analysis files:
+
+```bash
+docker compose down -v
 ```
 
 Install optional E2E tooling:
@@ -537,30 +647,41 @@ Authenticated product routes:
 - `POST /projects/{id}/audit`: run and store a baseline audit result.
 - `GET /projects/{id}/audits`: list audit results for a project.
 - `GET /analyses`: list file and URL analysis history for the signed-in user.
+  Supports `page`, `pageSize`, `inputType`, `riskLevel`, and `status` query
+  parameters. Filtering, ordering, and pagination are applied in the database.
 - `POST /analyses`: create a file analysis from a multipart upload, or a URL
   analysis from a JSON body.
 - `GET /analyses/{id}`: fetch a completed file or URL analysis result.
+- `DELETE /analyses/{id}`: delete an analysis owned by the signed-in user and
+  remove associated stored original/sanitized files when present.
 - `GET /analyses/{id}/file`: download the original uploaded file, or the
   isolated remote file captured during a URL analysis, when one is available
   for an analysis owned by the signed-in user.
 - `GET /analyses/{id}/clean-file`: download the sanitized file for a file
   analysis or remote-file URL analysis when clean-file generation completed.
+- `GET /storage`: return admin-only storage usage counts without exposing
+  filesystem paths.
 
-The authenticated dashboard shows project audit results and a flat analysis
+The authenticated dashboard shows project audit results and paginated analysis
 history. New users get a default project automatically, while manual project
 creation remains available for users who need separate project scopes. Analysis
-rows include target type, status, risk level, and timestamp. Selecting an
-analysis loads the existing `GET /analyses/{id}` result and shows summary,
+rows include target type, status, risk level, timestamp, view, and delete
+actions. Admin users also see a compact storage usage summary. History can be
+filtered by file/URL type, risk, and status. Selecting an analysis loads the
+existing `GET /analyses/{id}` result and shows summary,
 findings, deterministic explanations, metadata, risk score, original file
-details, and sanitized file details when available. The Original File panel
-shows filename, MIME type, size, risk warning, and a mediated download button.
-High-risk originals require an explicit browser confirmation before download.
-The Sanitized File panel shows filename, size, cleaning status, metadata removed,
-sanitization limitations, and a separate sanitized-copy download button. The
-Safe Preview panel shows a static image or plain-text preview when one can be
-generated without executing active content. The history endpoint is scoped
-through the signed-in user's projects, so users only see analyses attached to
-projects they own.
+details, and sanitized file details when available. Deleting an analysis removes
+the database record and its stored original/sanitized files after ownership
+validation. The Original File panel shows filename, MIME type, size, risk
+warning, and a mediated download button. High-risk originals require an explicit
+browser confirmation before download. The Sanitized File panel shows filename,
+size, cleaning status, metadata removed, sanitization limitations, and a
+separate sanitized-copy download button. The Safe Preview panel shows a static
+image or plain-text preview when one can be generated without executing active
+content. The history endpoint is scoped through the signed-in user's projects,
+so users only see analyses attached to projects they own. If a browser session
+expires, the dashboard redirects to sign-in with a short session-expired
+message.
 
 Analysis responses include an explanation layer for each finding. This layer is
 template-based and deterministic: it explains findings that already exist,
@@ -570,8 +691,10 @@ external data, or call an external AI service. A provider interface exists so a
 future LLM-based explainer can be plugged in without changing the detection
 pipeline.
 
-Pagination and filtering are not implemented yet. They are planned future work
-for larger analysis histories and improved dashboard UX.
+Deletion is permanent. Missing artifact files are handled gracefully. Stored
+paths are still checked against the configured storage directory before any file
+removal is attempted, and unsafe stale references are skipped rather than
+followed.
 
 ### File Analysis
 
@@ -617,7 +740,7 @@ Current limits and behavior:
 - Safe Preview supports static JPEG/PNG image previews, plain-text previews,
   and a first-page PDF static image generated from inert text snippets. It does
   not embed a PDF viewer or execute PDF actions.
-- Clean file generation creates a sanitized file record for file analyses.
+- Sanitized file generation creates a metadata-cleaned file record for file analyses.
   JPEG sanitization removes EXIF APP1 segments. PDF sanitization removes a
   small set of non-essential literal metadata fields such as author, producer,
   and creation date.
@@ -631,7 +754,9 @@ Current limits and behavior:
 - Sanitization transparency is shown in the dashboard. EXIF removal is reported
   as EXIF removed, including GPS/location fields when present. PDF metadata
   removal reports author, producer/tool, and timestamp fields when applicable.
-  Sanitization removes metadata only; it does not remove malware.
+  The dashboard also calls out cleanup limits: sanitization removes supported
+  metadata only; it does not remove malware, scripts, embedded content, or
+  active document behavior.
 
 Security boundary:
 
@@ -642,7 +767,7 @@ Security boundary:
   actions are not executed.
 - Sanitization is binary-only and removes metadata; it does not execute content
   or add replacement document content.
-- The current clean file feature is lightweight metadata removal, not full
+- The current sanitized file feature is lightweight metadata removal, not full
   document sanitization or malware removal.
 - The current implementation is structured for future sandboxing, but does not
   provide a sandbox yet.
@@ -678,7 +803,9 @@ Current limits and behavior:
 - If the URL response is a supported downloadable file, DataGuardian stores an
   isolated backend copy and runs the same file inspection pipeline before any
   local download. Initial remote file support is limited to PDF, JPEG, PNG, and
-  plain text responses under the URL response size limit.
+  plain text responses under the URL response size limit. Misleading file
+  content types are checked against fetched bytes before entering the
+  remote-file flow.
 - Remote-file URL analyses expose the same safe preview, findings, metadata,
   risk score, Original File download, and sanitized-copy download when
   sanitization is supported. Unsupported URL responses remain URL-only analyses
@@ -706,6 +833,8 @@ URL security boundary:
   such as `10.0.0.0/8`, `172.16.0.0/12`, and `192.168.0.0/16` are blocked to
   reduce SSRF risk.
 - The same SSRF checks are applied to redirect targets before each request.
+  The HTTP transport also resolves and validates the dial target so the request
+  uses a checked public IP instead of relying on an unchecked re-resolution.
 - The implementation is structured for future network isolation or sandboxing,
   but does not provide a separate sandbox yet.
 
@@ -759,6 +888,18 @@ and structured enough to extend.
 
 ## Release v1.0.0
 
+Release candidate checklist:
+
+- Docker startup succeeds with `docker compose up --build`.
+- Backend health returns `{"status":"ok"}` at `http://localhost:8000/health`.
+- `./scripts/release-check.sh` passes from a clean checkout.
+- `./scripts/smoke.sh` passes after the stack is running.
+- File and URL analyses complete without executing active content.
+- Original and sanitized downloads remain authenticated and ownership-scoped.
+- Safe previews are static, bounded, and unavailable for unsupported content.
+- Sanitized files are described as metadata-cleaned only.
+- `go test ./...` and `npm run build` pass before release.
+
 Tag:
 
 ```text
@@ -768,7 +909,7 @@ v1.0.0
 Title:
 
 ```text
-v1.0.0 - Production-ready DataGuardian
+v1.0.0 - DataGuardian Release Candidate
 ```
 
 Release focus:
@@ -783,8 +924,8 @@ Release focus:
   requirements.
 - Repository hygiene cleaned with generated artifacts, secrets, and local caches
   ignored.
-- Recruiter-focused architecture documentation added to explain decisions,
-  trade-offs, and production-readiness thinking.
+- Architecture documentation added to explain decisions, trade-offs, and
+  release-candidate readiness thinking.
 
 ## Project Structure
 
@@ -797,6 +938,8 @@ security/                Dependency, secret, and runtime security checks
 .github/workflows/       CI pipeline
 .github/dependabot.yml   Dependency automation policy
 docker-compose.yml       Local runtime stack
+scripts/release-check.sh Lightweight release preflight
+scripts/smoke.sh         Running-stack smoke validation
 start.sh                 Main manual/automated orchestrator
 run-tests.sh             Local validation bundle
 ```
@@ -828,11 +971,34 @@ Backend or frontend did not start:
 docker compose up -d db backend-go frontend
 ```
 
+Then inspect logs:
+
+```bash
+docker compose logs backend-go frontend
+```
+
 Frontend cannot reach backend:
 
 - Confirm `curl http://localhost:8000/health` returns `{"status":"ok"}`.
 - Confirm `NEXT_PUBLIC_API_URL` is `http://localhost:8000` for local Docker use.
 - Restart with `./scripts/up.sh`.
+
+Invalid config or storage startup failure:
+
+- Check `docker compose logs backend-go`.
+- Confirm `.env` values are integers where required.
+- Confirm `STORAGE_DIR` points to a writable directory inside the container.
+- For default Docker usage, leave `STORAGE_DIR=/data/uploads`.
+- If smoke validation fails immediately, use the service URL printed by
+  `./scripts/smoke.sh`, confirm the stack is running, and retry after
+  `http://localhost:8000/health` returns `{"status":"ok"}`.
+
+Reset local state:
+
+```bash
+docker compose down -v
+docker compose up --build
+```
 
 Pytest not installed:
 

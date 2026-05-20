@@ -15,9 +15,11 @@ import (
 )
 
 type server struct {
-	cfg         config.Settings
-	store       dataStore
-	authLimiter *rateLimiter
+	cfg             config.Settings
+	store           dataStore
+	authLimiter     *rateLimiter
+	analysisLimiter *rateLimiter
+	downloadLimiter *rateLimiter
 }
 
 type credentialsRequest struct {
@@ -32,9 +34,11 @@ type projectRequest struct {
 
 func NewRouter(cfg config.Settings, store *db.Store) http.Handler {
 	srv := &server{
-		cfg:         cfg,
-		store:       store,
-		authLimiter: newRateLimiter(20, time.Minute),
+		cfg:             cfg,
+		store:           store,
+		authLimiter:     newRateLimiter(20, time.Minute),
+		analysisLimiter: newRateLimiter(60, time.Minute),
+		downloadLimiter: newRateLimiter(30, time.Minute),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", srv.health)
@@ -47,11 +51,13 @@ func NewRouter(cfg config.Settings, store *db.Store) http.Handler {
 	mux.HandleFunc("GET /projects/{id}", srv.requireAuth(srv.getProject))
 	mux.HandleFunc("POST /projects/{id}/audit", srv.requireAuth(srv.runAudit))
 	mux.HandleFunc("GET /projects/{id}/audits", srv.requireAuth(srv.listAudits))
-	mux.HandleFunc("GET /analyses", srv.requireAuth(srv.listAnalyses))
-	mux.HandleFunc("POST /analyses", srv.requireAuth(srv.createAnalysis))
-	mux.HandleFunc("GET /analyses/{id}", srv.requireAuth(srv.getAnalysis))
-	mux.HandleFunc("GET /analyses/{id}/file", srv.requireAuth(srv.downloadOriginalFile))
-	mux.HandleFunc("GET /analyses/{id}/clean-file", srv.requireAuth(srv.downloadCleanFile))
+	mux.HandleFunc("GET /storage", srv.requireAuth(srv.requireAdmin(srv.analysisLimiter.middleware("storage", srv.storageSummary))))
+	mux.HandleFunc("GET /analyses", srv.requireAuth(srv.analysisLimiter.middleware("list-analyses", srv.listAnalyses)))
+	mux.HandleFunc("POST /analyses", srv.requireAuth(srv.analysisLimiter.middleware("create-analysis", srv.createAnalysis)))
+	mux.HandleFunc("GET /analyses/{id}", srv.requireAuth(srv.analysisLimiter.middleware("get-analysis", srv.getAnalysis)))
+	mux.HandleFunc("DELETE /analyses/{id}", srv.requireAuth(srv.analysisLimiter.middleware("delete-analysis", srv.deleteAnalysis)))
+	mux.HandleFunc("GET /analyses/{id}/file", srv.requireAuth(srv.downloadLimiter.middleware("download-original", srv.downloadOriginalFile)))
+	mux.HandleFunc("GET /analyses/{id}/clean-file", srv.requireAuth(srv.downloadLimiter.middleware("download-clean", srv.downloadCleanFile)))
 	return securityHeaders(httpsRequired(cfg, withTenantContext(cors(mux))))
 }
 
@@ -77,6 +83,26 @@ func (s *server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func (s *server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, ok := userIDFromContext(r.Context())
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"detail": "Invalid authentication credentials"})
+			return
+		}
+		user, err := s.store.UserByID(r.Context(), userID)
+		if err != nil {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"detail": "Invalid authentication credentials"})
+			return
+		}
+		if !user.IsAdmin {
+			writeJSON(w, http.StatusForbidden, map[string]string{"detail": "Admin access required"})
+			return
+		}
+		next(w, r)
+	}
+}
+
 func (s *server) me(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromContext(r.Context())
 	if !ok {
@@ -92,6 +118,7 @@ func (s *server) me(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id":         user.ID,
 		"email":      user.Email,
+		"isAdmin":    user.IsAdmin,
 		"created_at": user.CreatedAt,
 	})
 }

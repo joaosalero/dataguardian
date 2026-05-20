@@ -79,6 +79,29 @@ func TestAnalyzeURLBlocksSSRFHosts(t *testing.T) {
 	}
 }
 
+func TestSafeURLDialContextRejectsUnsafeReResolution(t *testing.T) {
+	originalLookup := lookupURLIPAddrs
+	lookupCount := 0
+	lookupURLIPAddrs = func(ctx context.Context, host string) ([]net.IPAddr, error) {
+		lookupCount++
+		if lookupCount == 1 {
+			return []net.IPAddr{{IP: net.ParseIP("93.184.216.34")}}, nil
+		}
+		return []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}}, nil
+	}
+	t.Cleanup(func() {
+		lookupURLIPAddrs = originalLookup
+	})
+
+	if _, err := validateSafeURL(context.Background(), "https://example.test/resource"); err != nil {
+		t.Fatalf("initial URL validation returned error: %v", err)
+	}
+	_, err := safeURLDialContext(context.Background())(context.Background(), "tcp", "example.test:443")
+	if !errors.Is(err, ErrUnsafeURL) {
+		t.Fatalf("expected unsafe URL error after DNS re-resolution, got %v", err)
+	}
+}
+
 func TestAnalyzeURLRecordsTimeoutAsFetchFailure(t *testing.T) {
 	withURLTestHooks(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		return nil, context.DeadlineExceeded
@@ -112,6 +135,24 @@ func TestAnalyzeURLRejectsOversizedResponses(t *testing.T) {
 	}
 	if result.Target.FetchStatus != db.FetchStatusFailed || result.Target.FailureReason == nil || *result.Target.FailureReason != "response too large" {
 		t.Fatalf("expected oversized fetch failure, got %#v", result.Target)
+	}
+}
+
+func TestAnalyzeURLDoesNotTreatMismatchedPDFHeaderAsRemoteFile(t *testing.T) {
+	withURLTestHooks(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/pdf"}},
+			Body:       io.NopCloser(strings.NewReader("<html>not a pdf</html>")),
+		}, nil
+	}))
+
+	result, err := AnalyzeURL(context.Background(), "https://example.test/report.pdf")
+	if err != nil {
+		t.Fatalf("AnalyzeURL returned error: %v", err)
+	}
+	if result.RemoteFile != nil {
+		t.Fatalf("expected mismatched PDF response to stay URL-only, got %#v", result.RemoteFile)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -32,8 +33,10 @@ func TestAnalysisRoutesExistAndRequireAuth(t *testing.T) {
 		{method: http.MethodGet, path: "/analyses"},
 		{method: http.MethodPost, path: "/analyses", body: `{"projectId":1,"inputType":"URL","url":{"originalUrl":"https://example.com"}}`},
 		{method: http.MethodGet, path: "/analyses/1"},
+		{method: http.MethodDelete, path: "/analyses/1"},
 		{method: http.MethodGet, path: "/analyses/1/file"},
 		{method: http.MethodGet, path: "/analyses/1/clean-file"},
+		{method: http.MethodGet, path: "/storage"},
 	} {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 		rec := httptest.NewRecorder()
@@ -147,6 +150,9 @@ func TestDownloadOriginalFileSuccess(t *testing.T) {
 			if disposition := rec.Header().Get("Content-Disposition"); !strings.Contains(disposition, "attachment") || !strings.Contains(disposition, "sample.pdf") {
 				t.Fatalf("expected attachment disposition, got %q", disposition)
 			}
+			if cacheControl := rec.Header().Get("Cache-Control"); cacheControl != "no-store" {
+				t.Fatalf("expected no-store cache control, got %q", cacheControl)
+			}
 		})
 	}
 }
@@ -191,6 +197,9 @@ func TestDownloadCleanFileSuccess(t *testing.T) {
 			if disposition := rec.Header().Get("Content-Disposition"); !strings.Contains(disposition, "attachment") || !strings.Contains(disposition, "sample-clean.pdf") {
 				t.Fatalf("expected attachment disposition, got %q", disposition)
 			}
+			if cacheControl := rec.Header().Get("Cache-Control"); cacheControl != "no-store" {
+				t.Fatalf("expected no-store cache control, got %q", cacheControl)
+			}
 		})
 	}
 }
@@ -211,6 +220,75 @@ func TestDownloadCleanFileReturnsNotFoundWhenMissing(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("downloadCleanFile returned %d, expected %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestDownloadOriginalFileReturnsNotFoundForInvalidStoredReference(t *testing.T) {
+	store := newFakeAnalysisStore()
+	store.analysis = db.Analysis{ID: 99, ProjectID: 7, InputType: db.InputTypeFile, Status: db.AnalysisStatusCompleted}
+	store.createdFile = db.File{
+		ID:               100,
+		AnalysisID:       99,
+		OriginalFilename: "sample.pdf",
+		StoredReference:  filepath.Join(t.TempDir(), "..", "outside.pdf"),
+		MimeType:         "application/pdf",
+	}
+	srv := &server{
+		cfg:   config.Settings{StorageDir: t.TempDir()},
+		store: store,
+	}
+	req := httptest.NewRequest(http.MethodGet, "/analyses/99/file", nil)
+	req.SetPathValue("id", "99")
+	req = req.WithContext(withUserID(req.Context(), 42))
+	rec := httptest.NewRecorder()
+
+	srv.downloadOriginalFile(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("downloadOriginalFile returned %d, expected %d", rec.Code, http.StatusNotFound)
+	}
+	if strings.Contains(rec.Body.String(), "outside.pdf") {
+		t.Fatalf("response leaked stored path: %s", rec.Body.String())
+	}
+}
+
+func TestStorageSummaryRequiresAdmin(t *testing.T) {
+	store := newFakeAnalysisStore()
+	srv := &server{cfg: config.Settings{StorageDir: t.TempDir()}, store: store}
+	req := httptest.NewRequest(http.MethodGet, "/storage", nil)
+	req = req.WithContext(withUserID(req.Context(), 42))
+	rec := httptest.NewRecorder()
+
+	srv.requireAdmin(srv.storageSummary)(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("storageSummary returned %d, expected %d", rec.Code, http.StatusForbidden)
+	}
+}
+
+func TestStorageSummaryAllowsAdmin(t *testing.T) {
+	storageDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(storageDir, "artifact.txt"), []byte("artifact"), 0o600); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+	store := newFakeAnalysisStore()
+	store.isAdmin = true
+	srv := &server{cfg: config.Settings{StorageDir: storageDir, StorageOrphanRetentionHours: 24}, store: store}
+	req := httptest.NewRequest(http.MethodGet, "/storage", nil)
+	req = req.WithContext(withUserID(req.Context(), 42))
+	rec := httptest.NewRecorder()
+
+	srv.requireAdmin(srv.storageSummary)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("storageSummary returned %d with body %s", rec.Code, rec.Body.String())
+	}
+	var payload StorageSummaryResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("response JSON did not decode: %v", err)
+	}
+	if payload.FileCount != 1 || payload.TotalBytes != int64(len("artifact")) {
+		t.Fatalf("unexpected storage summary: %#v", payload)
 	}
 }
 
@@ -612,6 +690,131 @@ func TestListAnalysesReturnsUserScopedHistory(t *testing.T) {
 	}
 }
 
+func TestListAnalysesAppliesFiltersAndPagination(t *testing.T) {
+	store := newFakeAnalysisStore()
+	store.projects = []db.Project{{ID: 7, UserID: 42}, {ID: 8, UserID: 42}}
+	store.analysesByProject = map[int64][]db.Analysis{
+		7: {
+			{ID: 1, ProjectID: 7, InputType: db.InputTypeFile, Status: db.AnalysisStatusCompleted, StartedAt: time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC)},
+			{ID: 2, ProjectID: 7, InputType: db.InputTypeURL, Status: db.AnalysisStatusCompleted, StartedAt: time.Date(2026, 5, 5, 11, 0, 0, 0, time.UTC)},
+		},
+		8: {
+			{ID: 3, ProjectID: 8, InputType: db.InputTypeFile, Status: db.AnalysisStatusFailed, StartedAt: time.Date(2026, 5, 5, 10, 0, 0, 0, time.UTC)},
+		},
+	}
+	store.riskScores = map[int64]db.RiskScore{
+		1: {Level: db.RiskLevelHigh},
+		2: {Level: db.RiskLevelLow},
+		3: {Level: db.RiskLevelHigh},
+	}
+	srv := &server{store: store}
+	req := httptest.NewRequest(http.MethodGet, "/analyses?inputType=FILE&riskLevel=HIGH&page=1&pageSize=1", nil)
+	req = req.WithContext(withUserID(req.Context(), 42))
+	rec := httptest.NewRecorder()
+
+	srv.listAnalyses(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("listAnalyses returned %d with body %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		Analyses   []AnalysisListItem `json:"analyses"`
+		Pagination AnalysisPagination `json:"pagination"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("response JSON did not decode: %v", err)
+	}
+	if len(payload.Analyses) != 1 || payload.Analyses[0].AnalysisID != 1 {
+		t.Fatalf("unexpected filtered page: %#v", payload.Analyses)
+	}
+	if payload.Pagination.TotalItems != 2 || !payload.Pagination.HasNext {
+		t.Fatalf("unexpected pagination: %#v", payload.Pagination)
+	}
+}
+
+func TestListAnalysesRejectsMalformedPagination(t *testing.T) {
+	srv := &server{store: newFakeAnalysisStore()}
+	req := httptest.NewRequest(http.MethodGet, "/analyses?page=abc", nil)
+	req = req.WithContext(withUserID(req.Context(), 42))
+	rec := httptest.NewRecorder()
+
+	srv.listAnalyses(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("listAnalyses returned %d, expected %d", rec.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(rec.Body.String(), "Invalid page parameter") {
+		t.Fatalf("unexpected response body: %s", rec.Body.String())
+	}
+}
+
+func TestListAnalysesOutOfRangePageIsEmptyWithPagination(t *testing.T) {
+	store := newFakeAnalysisStore()
+	store.projects = []db.Project{{ID: 7, UserID: 42}}
+	store.analysesByProject = map[int64][]db.Analysis{
+		7: {
+			{ID: 1, ProjectID: 7, InputType: db.InputTypeFile, Status: db.AnalysisStatusCompleted, StartedAt: time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC)},
+		},
+	}
+	store.riskScores = map[int64]db.RiskScore{1: {Level: db.RiskLevelLow}}
+	srv := &server{store: store}
+	req := httptest.NewRequest(http.MethodGet, "/analyses?page=2&pageSize=10", nil)
+	req = req.WithContext(withUserID(req.Context(), 42))
+	rec := httptest.NewRecorder()
+
+	srv.listAnalyses(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("listAnalyses returned %d with body %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		Analyses   []AnalysisListItem `json:"analyses"`
+		Pagination AnalysisPagination `json:"pagination"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("response JSON did not decode: %v", err)
+	}
+	if len(payload.Analyses) != 0 || payload.Pagination.TotalItems != 1 || payload.Pagination.TotalPages != 1 {
+		t.Fatalf("unexpected out-of-range page response: %#v", payload)
+	}
+}
+
+func TestDeleteAnalysisRemovesOwnedAnalysisAndArtifacts(t *testing.T) {
+	storageDir := t.TempDir()
+	originalPath := filepath.Join(storageDir, "original.pdf")
+	cleanPath := filepath.Join(storageDir, "clean.pdf")
+	if err := os.WriteFile(originalPath, []byte("original"), 0o600); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+	if err := os.WriteFile(cleanPath, []byte("clean"), 0o600); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+	store := newFakeAnalysisStore()
+	store.analysis = db.Analysis{ID: 99, ProjectID: 7, InputType: db.InputTypeFile}
+	store.createdFile = db.File{ID: 100, AnalysisID: 99, StoredReference: originalPath}
+	store.cleanFile = db.CleanFile{ID: 101, AnalysisID: 99, StoredReference: cleanPath}
+	srv := &server{cfg: config.Settings{StorageDir: storageDir}, store: store}
+	req := httptest.NewRequest(http.MethodDelete, "/analyses/99", nil)
+	req.SetPathValue("id", "99")
+	req = req.WithContext(withUserID(req.Context(), 42))
+	rec := httptest.NewRecorder()
+
+	srv.deleteAnalysis(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("deleteAnalysis returned %d with body %s", rec.Code, rec.Body.String())
+	}
+	if !store.deletedAnalysis {
+		t.Fatal("expected analysis to be deleted from store")
+	}
+	if _, err := os.Stat(originalPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected original artifact removed, got %v", err)
+	}
+	if _, err := os.Stat(cleanPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected clean artifact removed, got %v", err)
+	}
+}
+
 func TestGetAnalysisReturnsNotFoundForUnauthorizedAnalysis(t *testing.T) {
 	store := newFakeAnalysisStore()
 	store.getAnalysisErr = db.ErrNotFound
@@ -793,6 +996,8 @@ type fakeAnalysisStore struct {
 	projects          []db.Project
 	analysesByProject map[int64][]db.Analysis
 	getAnalysisErr    error
+	deletedAnalysis   bool
+	isAdmin           bool
 }
 
 func newFakeAnalysisStore() *fakeAnalysisStore {
@@ -800,7 +1005,7 @@ func newFakeAnalysisStore() *fakeAnalysisStore {
 }
 
 func (f *fakeAnalysisStore) UserByID(ctx context.Context, id int64) (db.User, error) {
-	return db.User{ID: id, Email: "test@dataguardian.dev"}, nil
+	return db.User{ID: id, Email: "test@dataguardian.dev", IsAdmin: f.isAdmin}, nil
 }
 
 func (f *fakeAnalysisStore) UserByEmail(ctx context.Context, email string) (db.User, error) {
@@ -867,6 +1072,65 @@ func (f *fakeAnalysisStore) ListAnalysesByProject(ctx context.Context, userID in
 		return f.analysesByProject[projectID], nil
 	}
 	return []db.Analysis{f.analysis}, nil
+}
+
+func (f *fakeAnalysisStore) ListAnalysesForUser(ctx context.Context, userID int64, filter db.AnalysisListFilter) ([]db.AnalysisListRow, int, error) {
+	rows := []db.AnalysisListRow{}
+	projects := f.projects
+	if len(projects) == 0 {
+		projects = []db.Project{{ID: f.analysis.ProjectID, UserID: userID}}
+	}
+	for _, project := range projects {
+		analyses := f.analysesByProject[project.ID]
+		if f.analysesByProject == nil && f.analysis.ID != 0 {
+			analyses = []db.Analysis{f.analysis}
+		}
+		for _, analysis := range analyses {
+			riskScore := f.riskScore
+			if f.riskScores != nil {
+				riskScore = f.riskScores[analysis.ID]
+			}
+			row := db.AnalysisListRow{
+				AnalysisID: analysis.ID,
+				ProjectID:  analysis.ProjectID,
+				InputType:  analysis.InputType,
+				Status:     analysis.Status,
+				RiskLevel:  riskScore.Level,
+				CreatedAt:  analysis.StartedAt,
+			}
+			if filter.InputType != nil && row.InputType != *filter.InputType {
+				continue
+			}
+			if filter.RiskLevel != nil && row.RiskLevel != *filter.RiskLevel {
+				continue
+			}
+			if filter.Status != nil && row.Status != *filter.Status {
+				continue
+			}
+			rows = append(rows, row)
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		return rows[i].CreatedAt.After(rows[j].CreatedAt)
+	})
+	total := len(rows)
+	start := (filter.Page - 1) * filter.PageSize
+	if start >= total {
+		return []db.AnalysisListRow{}, total, nil
+	}
+	end := start + filter.PageSize
+	if end > total {
+		end = total
+	}
+	return rows[start:end], total, nil
+}
+
+func (f *fakeAnalysisStore) DeleteAnalysis(ctx context.Context, userID int64, analysisID int64) error {
+	if f.getAnalysisErr != nil {
+		return f.getAnalysisErr
+	}
+	f.deletedAnalysis = true
+	return nil
 }
 
 func (f *fakeAnalysisStore) CreateFile(ctx context.Context, file db.File) (db.File, error) {

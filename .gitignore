@@ -8,6 +8,7 @@
 .DS_Store
 Thumbs.db
 Desktop.ini
+*:Zone.Identifier
 
 # Secrets and local environment
 .env

@@ -127,6 +127,25 @@ type Analysis struct {
 	FailureReason *string        `json:"failure_reason"`
 }
 
+// AnalysisListFilter describes the lightweight filters used by analysis history.
+type AnalysisListFilter struct {
+	Page      int
+	PageSize  int
+	InputType *InputType
+	RiskLevel *RiskLevel
+	Status    *AnalysisStatus
+}
+
+// AnalysisListRow is the database-shaped row for analysis history.
+type AnalysisListRow struct {
+	AnalysisID int64
+	ProjectID  int64
+	InputType  InputType
+	Status     AnalysisStatus
+	RiskLevel  RiskLevel
+	CreatedAt  time.Time
+}
+
 // File represents the original uploaded file associated with an analysis.
 type File struct {
 	ID               int64     `json:"id"`

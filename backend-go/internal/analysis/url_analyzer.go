@@ -31,7 +31,7 @@ var (
 )
 
 var lookupURLIPAddrs = net.DefaultResolver.LookupIPAddr
-var urlHTTPTransport http.RoundTripper = http.DefaultTransport
+var urlHTTPTransport http.RoundTripper
 
 // URLResult contains the persisted URL target details and deterministic findings.
 type URLResult struct {
@@ -159,19 +159,39 @@ func supportedRemoteFileMimeType(headerType string, sniffedType string, content 
 	switch {
 	case strings.Contains(headerType, "text/html"):
 		return ""
-	case strings.Contains(headerType, "application/pdf") || sniffedType == "application/pdf":
+	case (strings.Contains(headerType, "application/pdf") || sniffedType == "application/pdf") && looksLikePDF(content):
 		return "application/pdf"
-	case strings.Contains(headerType, "image/jpeg") || sniffedType == "image/jpeg":
+	case (strings.Contains(headerType, "image/jpeg") || sniffedType == "image/jpeg") && looksLikeJPEG(content):
 		return "image/jpeg"
-	case strings.Contains(headerType, "image/png") || sniffedType == "image/png":
+	case (strings.Contains(headerType, "image/png") || sniffedType == "image/png") && looksLikePNG(content):
 		return "image/png"
-	case strings.HasPrefix(headerType, "text/plain"):
+	case strings.HasPrefix(headerType, "text/plain") && looksLikeText(content):
 		return "text/plain; charset=utf-8"
-	case headerType == "" && strings.HasPrefix(sniffedType, "text/plain") && !bytes.Contains(bytes.ToLower(content[:min(len(content), 1024)]), []byte("<html")):
+	case headerType == "" && strings.HasPrefix(sniffedType, "text/plain") && looksLikeText(content) && !bytes.Contains(bytes.ToLower(content[:min(len(content), 1024)]), []byte("<html")):
 		return "text/plain; charset=utf-8"
 	default:
 		return ""
 	}
+}
+
+func looksLikePDF(content []byte) bool {
+	return len(content) >= 4 && string(content[:4]) == "%PDF"
+}
+
+func looksLikeJPEG(content []byte) bool {
+	return len(content) >= 3 && content[0] == 0xff && content[1] == 0xd8 && content[2] == 0xff
+}
+
+func looksLikePNG(content []byte) bool {
+	return len(content) >= 8 && string(content[:8]) == "\x89PNG\r\n\x1a\n"
+}
+
+func looksLikeText(content []byte) bool {
+	if len(content) == 0 {
+		return false
+	}
+	sample := content[:min(len(content), 1024)]
+	return !bytes.Contains(sample, []byte{0})
 }
 
 func remoteFileName(requestURL *url.URL, finalURL string, mimeType string) string {
@@ -229,44 +249,55 @@ func validateSafeURL(ctx context.Context, raw string) (*url.URL, error) {
 	if parsed.User != nil || parsed.Fragment != "" {
 		return nil, ErrInvalidURL
 	}
-	if err := ensureSafeHost(ctx, parsed.Hostname()); err != nil {
+	if _, err := resolveSafeHost(ctx, parsed.Hostname()); err != nil {
 		return nil, err
 	}
 	return parsed, nil
 }
 
 func ensureSafeHost(ctx context.Context, host string) error {
+	_, err := resolveSafeHost(ctx, host)
+	return err
+}
+
+func resolveSafeHost(ctx context.Context, host string) ([]net.IP, error) {
 	host = strings.TrimSuffix(strings.ToLower(host), ".")
 	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
-		return ErrUnsafeURL
+		return nil, ErrUnsafeURL
 	}
 	if ip := net.ParseIP(host); ip != nil {
 		if isUnsafeIP(ip) {
-			return ErrUnsafeURL
+			return nil, ErrUnsafeURL
 		}
-		return nil
+		return []net.IP{ip}, nil
 	}
 	addrs, err := lookupURLIPAddrs(ctx, host)
 	if err != nil || len(addrs) == 0 {
-		return ErrInvalidURL
+		return nil, ErrInvalidURL
 	}
 	// Every resolved address must be public; mixed public/private DNS answers are blocked.
+	ips := make([]net.IP, 0, len(addrs))
 	for _, addr := range addrs {
 		if isUnsafeIP(addr.IP) {
-			return ErrUnsafeURL
+			return nil, ErrUnsafeURL
 		}
+		ips = append(ips, addr.IP)
 	}
-	return nil
+	return ips, nil
 }
 
 func isUnsafeIP(ip net.IP) bool {
-	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsUnspecified()
+	return !ip.IsGlobalUnicast() || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsUnspecified()
 }
 
 func fetchURL(ctx context.Context, start *url.URL, target db.URLTarget) (db.URLTarget, []byte, error) {
+	transport := urlHTTPTransport
+	if transport == nil {
+		transport = safeURLTransport(ctx)
+	}
 	client := &http.Client{
 		Timeout:   urlFetchTimeout,
-		Transport: urlHTTPTransport,
+		Transport: transport,
 		// Redirects are validated and followed manually so every hop gets SSRF checks.
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
@@ -325,6 +356,31 @@ func fetchURL(ctx context.Context, start *url.URL, target db.URLTarget) (db.URLT
 		now := time.Now().UTC()
 		target.FetchedAt = &now
 		return target, content, nil
+	}
+}
+
+func safeURLTransport(ctx context.Context) http.RoundTripper {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	transport.DialContext = safeURLDialContext(ctx)
+	return transport
+}
+
+func safeURLDialContext(parent context.Context) func(context.Context, string, string) (net.Conn, error) {
+	dialer := &net.Dialer{Timeout: urlFetchTimeout}
+	return func(ctx context.Context, network string, address string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, ErrInvalidURL
+		}
+		ips, err := resolveSafeHost(parent, host)
+		if err != nil {
+			return nil, err
+		}
+		if len(ips) == 0 {
+			return nil, ErrInvalidURL
+		}
+		return dialer.DialContext(ctx, network, net.JoinHostPort(ips[0].String(), port))
 	}
 }
 

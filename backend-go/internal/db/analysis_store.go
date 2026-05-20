@@ -129,6 +129,103 @@ func (s *Store) ListAnalysesByProject(ctx context.Context, userID int64, project
 	return analyses, rows.Err()
 }
 
+// ListAnalysesForUser loads one filtered page of analysis history for a user.
+func (s *Store) ListAnalysesForUser(ctx context.Context, userID int64, filter AnalysisListFilter) ([]AnalysisListRow, int, error) {
+	inputType := ""
+	if filter.InputType != nil {
+		inputType = string(*filter.InputType)
+	}
+	riskLevel := ""
+	if filter.RiskLevel != nil {
+		riskLevel = string(*filter.RiskLevel)
+	}
+	status := ""
+	if filter.Status != nil {
+		status = string(*filter.Status)
+	}
+	offset := (filter.Page - 1) * filter.PageSize
+	if offset < 0 {
+		offset = 0
+	}
+
+	var totalItems int
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT count(*)
+		 FROM analyses a
+		 JOIN projects p ON p.id = a.project_id
+		 JOIN analysis_risk_scores r ON r.analysis_id = a.id
+		 WHERE p.user_id = $1
+		   AND ($2 = '' OR a.input_type = $2)
+		   AND ($3 = '' OR r.level = $3)
+		   AND ($4 = '' OR a.status = $4)`,
+		userID,
+		inputType,
+		riskLevel,
+		status,
+	).Scan(&totalItems)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT a.id, a.project_id, a.input_type, a.status, r.level, a.started_at
+		 FROM analyses a
+		 JOIN projects p ON p.id = a.project_id
+		 JOIN analysis_risk_scores r ON r.analysis_id = a.id
+		 WHERE p.user_id = $1
+		   AND ($2 = '' OR a.input_type = $2)
+		   AND ($3 = '' OR r.level = $3)
+		   AND ($4 = '' OR a.status = $4)
+		 ORDER BY a.started_at DESC, a.id DESC
+		 LIMIT $5 OFFSET $6`,
+		userID,
+		inputType,
+		riskLevel,
+		status,
+		filter.PageSize,
+		offset,
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	items := []AnalysisListRow{}
+	for rows.Next() {
+		var item AnalysisListRow
+		if err := rows.Scan(&item.AnalysisID, &item.ProjectID, &item.InputType, &item.Status, &item.RiskLevel, &item.CreatedAt); err != nil {
+			return nil, 0, err
+		}
+		items = append(items, item)
+	}
+	return items, totalItems, rows.Err()
+}
+
+// DeleteAnalysis removes an analysis owned by the user. Child rows are removed by database cascades.
+func (s *Store) DeleteAnalysis(ctx context.Context, userID int64, analysisID int64) error {
+	result, err := s.db.ExecContext(
+		ctx,
+		`DELETE FROM analyses a
+		 USING projects p
+		 WHERE a.project_id = p.id AND a.id = $1 AND p.user_id = $2`,
+		analysisID,
+		userID,
+	)
+	if err != nil {
+		return err
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if deleted == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // CreateFile stores metadata for the original uploaded file.
 func (s *Store) CreateFile(ctx context.Context, file File) (File, error) {
 	var created File
@@ -530,4 +627,28 @@ func (s *Store) CleanFileByAnalysisID(ctx context.Context, analysisID int64) (Cl
 		return CleanFile{}, err
 	}
 	return cleanFile, nil
+}
+
+// StoredFileReferences returns persisted storage references that must remain downloadable.
+func (s *Store) StoredFileReferences(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT stored_reference FROM analysis_files WHERE stored_reference <> ''
+		 UNION
+		 SELECT stored_reference FROM clean_files WHERE stored_reference <> ''`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	references := []string{}
+	for rows.Next() {
+		var reference string
+		if err := rows.Scan(&reference); err != nil {
+			return nil, err
+		}
+		references = append(references, reference)
+	}
+	return references, rows.Err()
 }
