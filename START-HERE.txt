@@ -4,6 +4,13 @@ DataGuardian - Start Here
 DataGuardian is a local Docker-first inspection tool for suspicious files and
 URLs. It runs on your computer through Docker Compose.
 
+Safety expectations
+-------------------
+
+DataGuardian performs passive inspection. It does not execute uploaded files,
+detonate malware, render remote websites interactively, or guarantee that a
+file is safe. Sanitized files are metadata-cleaned copies only.
+
 First-run checklist
 -------------------
 
@@ -43,6 +50,7 @@ What the launchers do NOT do
 - They do not change system settings.
 - They do not replace Docker or run a separate runtime.
 - They do not send telemetry.
+- They do not analyze files until you use the app after startup.
 
 Files beginners should use
 --------------------------

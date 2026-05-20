@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Added
-- File analysis (PDF, JPG)
+- File analysis (PDF, JPEG, PNG, plain text)
 - URL analysis with SSRF protection
 - Metadata extraction and classification
 - Risk scoring system
@@ -18,6 +18,8 @@
 - Lightweight release smoke-validation script
 - Lightweight release preflight helper for required files, shell syntax, and
   Docker Compose configuration
+- Beginner-friendly launchers for Windows and Linux/macOS
+- Root `START-HERE.txt` for portable ZIP onboarding
 
 ### Changed
 - UI updated to support file and URL analysis
@@ -46,10 +48,16 @@
   project structure
 - Release title wording now reflects release-candidate readiness instead of
   implying full production hardening
+- README and START-HERE now clarify Docker-first startup, launcher behavior,
+  ZIP extraction, optional release checks, and recovery guidance
+- Security wording now clarifies passive inspection boundaries and
+  sanitized-file limitations for public RC users
 
 ### Known Limitations
 - Sanitized files remove selected metadata only; they are not a full malware
   removal or content-disarm guarantee
+- DataGuardian is not a malware sandbox, detonation system, or interactive
+  browser-based website renderer
 
 ## [1.0.0] (planned)
 

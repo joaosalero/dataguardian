@@ -1,5 +1,14 @@
 # Security Policy
 
+## Security Model
+
+DataGuardian is a local-first passive inspection tool. It does not execute
+uploaded files, detonate malware, run browser automation for URL inspection, or
+render remote websites interactively. Safe previews are static and read-only.
+
+Sanitized files are metadata-cleaned copies only. They are not guaranteed safe,
+malware-free, or fully content-disarmed.
+
 ## Supported Versions
 
 | Version | Supported |
