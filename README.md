@@ -125,6 +125,11 @@ Beginner-facing files are `START-HERE.txt`, `start-dataguardian.bat`,
 `start-dataguardian.sh`, and `README.md`. Runtime and source folders such as
 `backend-go/`, `frontend/`, `scripts/`, and `security/` should be left in place.
 
+For maintainers and reviewers, `./scripts/release-check.sh` verifies release
+file presence, shell syntax, and Docker Compose configuration without starting
+the stack. After startup, `./scripts/smoke.sh` can verify login plus a small
+file and URL analysis. These checks are optional for normal users.
+
 ### Docker Command Start
 
 After cloning the repository, start everything with:
@@ -273,6 +278,11 @@ If startup fails:
   app using the port and rerun `start-dataguardian.bat`.
 - Stack started but app did not open: visit `http://localhost:3000` manually.
 - Health check failed: inspect logs with `docker compose logs backend-go frontend`.
+- Smoke check failed: restart the stack, confirm `http://localhost:3000` opens,
+  then rerun `./scripts/smoke.sh`.
+- Release check failed: make sure the ZIP was fully extracted and required
+  files such as `START-HERE.txt`, `README.md`, and `docker-compose.yml` are
+  still present.
 
 Restart without deleting local data:
 
