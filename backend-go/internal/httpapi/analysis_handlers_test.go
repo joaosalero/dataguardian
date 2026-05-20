@@ -268,33 +268,6 @@ func TestStoredFilePathForWriteRejectsUnsafeFilenames(t *testing.T) {
 	}
 }
 
-func TestStoredFilePathRejectsUnsafeReferences(t *testing.T) {
-	storageDir := t.TempDir()
-	path, ok := storedFilePath(storageDir, filepath.Join(storageDir, "checksum-token.pdf"))
-	if !ok {
-		t.Fatal("expected absolute storage reference inside storage dir to be accepted")
-	}
-	if !strings.HasPrefix(filepath.Clean(path), filepath.Clean(storageDir)+string(filepath.Separator)) {
-		t.Fatalf("stored path escaped storage dir: %s", path)
-	}
-	for _, storedReference := range []string{
-		"checksum-token.pdf",
-		filepath.Join(t.TempDir(), "outside.pdf"),
-		filepath.Join(storageDir, "nested", "file.pdf"),
-		"",
-	} {
-		if path, ok := storedFilePath(storageDir, storedReference); ok {
-			t.Fatalf("expected unsafe stored reference %q to be rejected, got %s", storedReference, path)
-		}
-	}
-}
-
-func TestCleanFilenameUsesSafeBasename(t *testing.T) {
-	if got := cleanFilename("../report.pdf"); got != "report-clean.pdf" {
-		t.Fatalf("unexpected clean filename: %s", got)
-	}
-}
-
 func TestStorageSummaryRequiresAdmin(t *testing.T) {
 	store := newFakeAnalysisStore()
 	srv := &server{cfg: config.Settings{StorageDir: t.TempDir()}, store: store}

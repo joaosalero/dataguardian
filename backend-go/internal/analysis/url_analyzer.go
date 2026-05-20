@@ -306,7 +306,12 @@ func fetchURL(ctx context.Context, start *url.URL, target db.URLTarget) (db.URLT
 	current := start
 
 	for redirects := 0; ; redirects++ {
-		req, validatedCurrent, err := safeURLRequest(ctx, http.MethodGet, current)
+		validatedCurrent, err := validateSafeURL(ctx, current.String())
+		if err != nil {
+			return target, nil, err
+		}
+		current = validatedCurrent
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, current.String(), nil)
 		if err != nil {
 			return target, nil, err
 		}

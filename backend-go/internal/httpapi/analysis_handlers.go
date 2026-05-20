@@ -876,14 +876,14 @@ func storeAnalysisFile(storageDir string, checksum string, extension string, con
 }
 
 func storedFilePathForWrite(storageDir string, filename string) (string, bool) {
-	if !validStoredFilename(filename) {
+	if strings.TrimSpace(filename) == "" || filepath.Base(filename) != filename {
 		return "", false
 	}
-	storageRoot, err := canonicalStorageRoot(storageDir)
+	storageRoot, err := filepath.Abs(storageDir)
 	if err != nil {
 		return "", false
 	}
-	cleanPath, err := filepath.Abs(filepath.Join(storageRoot, filepath.Clean(filename)))
+	cleanPath, err := filepath.Abs(filepath.Join(storageRoot, filename))
 	if err != nil {
 		return "", false
 	}
