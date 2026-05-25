@@ -16,8 +16,9 @@ First-run checklist
 
 1. Extract the ZIP or clone the repository.
 2. Start Docker Desktop or the Docker service yourself.
-3. Run the launcher for your operating system from this folder.
-4. Open http://localhost:3000 when the launcher says DataGuardian is ready.
+3. Open a terminal in this folder.
+4. Run: docker compose up --build
+5. Open http://localhost:3000 when Docker Compose finishes startup.
 
 What to run first
 -----------------
@@ -25,17 +26,31 @@ What to run first
 Windows:
   1. Extract the ZIP first. Do not run from inside the compressed ZIP viewer.
   2. Start Docker Desktop and wait until it says Docker is running.
-  3. Double-click start-dataguardian.bat.
+  3. Open PowerShell in this folder.
+  4. Run: docker compose up --build
 
 Linux or macOS:
   1. Extract the ZIP first.
   2. Start Docker Desktop or the Docker service.
   3. Open a terminal in this folder.
-  4. Run: ./start-dataguardian.sh
+  4. Run: docker compose up --build
+
+Optional helper launchers
+-------------------------
+
+If you prefer a guided wrapper after Docker is already installed and running,
+you can use the launcher for your operating system:
+
+Windows:
+  Double-click start-dataguardian.bat
+
+Linux or macOS:
+  ./start-dataguardian.sh
 
 What the launchers do
 ---------------------
 
+- They are optional convenience wrappers around Docker Compose.
 - Check that Docker and Docker Compose are available.
 - Run the normal Docker Compose startup commands in this folder.
 - Wait for the backend and frontend to become ready.
@@ -92,7 +107,7 @@ If startup fails:
   1. Make sure Docker Desktop or the Docker service is running.
   2. Make sure ports 3000, 8000, and 5434 are not used by another app.
   3. Restart without deleting data: docker compose down
-  4. Run the launcher again.
+  4. Start again: docker compose up --build
   5. Inspect logs if needed: docker compose logs backend-go frontend
 
 If the browser does not open, open this address manually:
