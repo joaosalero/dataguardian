@@ -10,3 +10,15 @@ body {
   background: #f6f7f9;
   color: #111827;
 }
+
+.dark body { background: #111827; color: #f3f4f6; }
+.dark .bg-white { background-color: #1f2937; }
+.dark .bg-gray-50 { background-color: #111827; }
+.dark .text-gray-950, .dark .text-gray-900, .dark .text-gray-800 { color: #f3f4f6; }
+.dark .text-gray-700, .dark .text-gray-600, .dark .text-gray-500 { color: #d1d5db; }
+.dark .border-gray-200, .dark .border-gray-300 { border-color: #4b5563; }
+
+:focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}

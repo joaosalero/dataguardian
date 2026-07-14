@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -184,7 +185,7 @@ CREATE TABLE IF NOT EXISTS users (
 		}
 	}
 
-	return nil
+	return s.applyMigrations(ctx)
 }
 
 func (s *Store) UserByEmail(ctx context.Context, email string) (User, error) {
@@ -306,23 +307,27 @@ func (s *Store) ProjectByID(ctx context.Context, userID int64, projectID int64) 
 
 func (s *Store) CreateAudit(ctx context.Context, projectID int64, status string, summary string, findings []string) (Audit, error) {
 	var audit Audit
+	var rawFindings []byte
 	err := s.db.QueryRowContext(
 		ctx,
 		`INSERT INTO audits (project_id, status, summary, findings)
 		 VALUES ($1, $2, $3, $4)
-		 RETURNING id, project_id, status, summary, findings, created_at`,
+		 RETURNING id, project_id, status, summary, array_to_json(findings), created_at`,
 		projectID,
 		status,
 		summary,
 		findings,
-	).Scan(&audit.ID, &audit.ProjectID, &audit.Status, &audit.Summary, &audit.Findings, &audit.CreatedAt)
+	).Scan(&audit.ID, &audit.ProjectID, &audit.Status, &audit.Summary, &rawFindings, &audit.CreatedAt)
+	if err == nil {
+		err = json.Unmarshal(rawFindings, &audit.Findings)
+	}
 	return audit, err
 }
 
 func (s *Store) AuditsByProject(ctx context.Context, projectID int64) ([]Audit, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT id, project_id, status, summary, findings, created_at
+		`SELECT id, project_id, status, summary, array_to_json(findings), created_at
 		 FROM audits
 		 WHERE project_id = $1
 		 ORDER BY created_at DESC, id DESC`,
@@ -336,7 +341,11 @@ func (s *Store) AuditsByProject(ctx context.Context, projectID int64) ([]Audit, 
 	audits := []Audit{}
 	for rows.Next() {
 		var audit Audit
-		if err := rows.Scan(&audit.ID, &audit.ProjectID, &audit.Status, &audit.Summary, &audit.Findings, &audit.CreatedAt); err != nil {
+		var rawFindings []byte
+		if err := rows.Scan(&audit.ID, &audit.ProjectID, &audit.Status, &audit.Summary, &rawFindings, &audit.CreatedAt); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(rawFindings, &audit.Findings); err != nil {
 			return nil, err
 		}
 		audits = append(audits, audit)

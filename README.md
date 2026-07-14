@@ -71,6 +71,24 @@ state.
 
 ## Start Here
 
+### Desktop shortcuts
+
+- Windows: `powershell -ExecutionPolicy Bypass -File .\scripts\desktop-shortcut.ps1 install`
+- Linux: `./scripts/desktop-shortcut.sh install`
+- macOS: `./scripts/desktop-shortcut-macos.sh install`
+
+Replace `install` with `remove` to uninstall. Shortcuts run the existing Docker-first launcher, require no administrator privileges, and never install Docker automatically. Linux/macOS users can also run `./scripts/manage.sh` for start, stop, status, logs, and shortcut actions.
+
+| Platform | Supported runtime | Shortcut validation |
+|---|---|---|
+| Windows 10/11 | Docker Desktop, amd64/arm64 as provided by Docker | PowerShell helper; manual Windows validation recommended |
+| macOS Intel/Apple Silicon | Docker Desktop | Shell syntax validated; manual macOS validation recommended |
+| Linux amd64/arm64 | Docker Engine and Compose | Automated user-local shortcut test |
+
+Support means the Docker-first workflow is designed for these environments; it is not a claim that every distribution or hardware combination has been tested.
+
+The frontend exposes an installable web-app manifest, but intentionally has no service worker. Authenticated responses, analyses, previews, files, and personal data are therefore not cached for offline use, and background sync/push are not enabled.
+
 ### Requirements
 
 - Docker with Docker Compose.
@@ -336,6 +354,10 @@ test  / test123
 
 ### Screenshots
 
+![DataGuardian dashboard](docs/screenshots/dashboard.png)
+
+The dashboard includes passive analysis, risk review, static previews, metadata-only sanitized copies, local JSON/PDF report export, profile visibility, and a persistent dark theme.
+
 Screenshots are planned for the public README:
 
 - Login and registration
@@ -438,6 +460,8 @@ The legacy Python implementation is not part of Docker, CI, startup scripts, or
 the active runtime.
 
 ## Security Mindset
+
+Additional hardening includes CSRF/Fetch Metadata checks, bounded JSON and upload inputs, MIME/extension consistency, trusted connection IP rate limiting with expired-key cleanup, restricted URL destination ports, redirect-by-redirect SSRF validation, and versioned schema migrations.
 
 Security is treated as a workflow property, not a README claim.
 

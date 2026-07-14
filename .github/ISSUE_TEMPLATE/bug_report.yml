@@ -1,0 +1,25 @@
+name: Bug report
+description: Report a reproducible non-security defect
+body:
+  - type: markdown
+    attributes:
+      value: Do not disclose vulnerabilities or suspicious-file contents here. Use GitHub Security Advisories.
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Observed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Safe reproduction steps
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true

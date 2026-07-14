@@ -3,16 +3,16 @@ package httpapi
 import (
 	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 )
 
 type rateLimiter struct {
-	mu       sync.Mutex
-	limit    int
-	window   time.Duration
-	attempts map[string][]time.Time
+	mu          sync.Mutex
+	limit       int
+	window      time.Duration
+	attempts    map[string][]time.Time
+	lastCleanup time.Time
 }
 
 func newRateLimiter(limit int, window time.Duration) *rateLimiter {
@@ -28,6 +28,14 @@ func (l *rateLimiter) allow(key string, now time.Time) bool {
 	defer l.mu.Unlock()
 
 	cutoff := now.Add(-l.window)
+	if l.lastCleanup.IsZero() || now.Sub(l.lastCleanup) >= l.window {
+		for existingKey, attempts := range l.attempts {
+			if len(attempts) == 0 || !attempts[len(attempts)-1].After(cutoff) {
+				delete(l.attempts, existingKey)
+			}
+		}
+		l.lastCleanup = now
+	}
 	recent := l.attempts[key][:0]
 	for _, attempt := range l.attempts[key] {
 		if attempt.After(cutoff) {
@@ -55,12 +63,6 @@ func (l *rateLimiter) middleware(action string, next http.HandlerFunc) http.Hand
 }
 
 func clientIP(r *http.Request) string {
-	forwardedFor := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
-	if forwardedFor != "" {
-		parts := strings.Split(forwardedFor, ",")
-		return strings.TrimSpace(parts[0])
-	}
-
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err == nil {
 		return host

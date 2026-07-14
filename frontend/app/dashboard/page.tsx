@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -167,6 +168,7 @@ export default function DashboardPage() {
   const [cleanFileError, setCleanFileError] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [previewImageFailed, setPreviewImageFailed] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectID) ?? null,
@@ -218,6 +220,10 @@ export default function DashboardPage() {
           setAudits([]);
         }
         await fetchAnalyses({ page: 1 });
+        const requestedAnalysis = Number(new URLSearchParams(window.location.search).get("analysis"));
+        if (Number.isSafeInteger(requestedAnalysis) && requestedAnalysis > 0) {
+          await selectAnalysis(requestedAnalysis);
+        }
         if (profile.isAdmin) {
           await fetchStorageSummary();
         }
@@ -234,6 +240,28 @@ export default function DashboardPage() {
   useEffect(() => {
     setPreviewImageFailed(false);
   }, [selectedAnalysis?.analysisId, selectedAnalysis?.safePreview?.kind, selectedAnalysis?.safePreview?.dataUrl]);
+
+  useEffect(() => {
+    const enabled = window.localStorage.getItem("dataguardian-theme") === "dark";
+    setDarkMode(enabled);
+    document.documentElement.classList.toggle("dark", enabled);
+  }, []);
+
+  function toggleDarkMode() {
+    const enabled = !darkMode;
+    setDarkMode(enabled);
+    window.localStorage.setItem("dataguardian-theme", enabled ? "dark" : "light");
+    document.documentElement.classList.toggle("dark", enabled);
+  }
+
+  function exportSelectedAnalysis(format: "json" | "pdf") {
+    if (!selectedAnalysis) return;
+    if (format === "json") {
+      downloadGeneratedFile(`dataguardian-analysis-${selectedAnalysis.analysisId}.json`, "application/json", JSON.stringify(selectedAnalysis, null, 2));
+      return;
+    }
+    downloadGeneratedFile(`dataguardian-analysis-${selectedAnalysis.analysisId}.pdf`, "application/pdf", buildStaticPDF(selectedAnalysis));
+  }
 
   async function apiFetch(path: string, init?: RequestInit) {
     return fetch(`${API_BASE_URL}${path}`, {
@@ -355,6 +383,7 @@ export default function DashboardPage() {
         throw new Error(await parseError(response));
       }
       setSelectedAnalysis((await response.json()) as AnalysisDetail);
+      window.history.replaceState(null, "", `/dashboard?analysis=${analysisID}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load analysis details.");
     } finally {
@@ -669,6 +698,11 @@ export default function DashboardPage() {
               {email ? `Signed in as ${email}.` : "Verifying your session."}
             </p>
           </div>
+          <div className="flex gap-2">
+          <Link className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50" href="/profile">Profile</Link>
+          <button className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50" onClick={toggleDarkMode} type="button">
+            {darkMode ? "Light mode" : "Dark mode"}
+          </button>
           <button
             className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
             onClick={logout}
@@ -676,21 +710,28 @@ export default function DashboardPage() {
           >
             Sign out
           </button>
+          </div>
         </header>
 
+        <nav aria-label="Primary" className="mb-5 flex flex-wrap gap-2 text-sm">
+          <a className="rounded-md bg-gray-950 px-3 py-2 font-medium text-white" href="#analyses">Analyses</a>
+          <a className="rounded-md border border-gray-300 px-3 py-2 font-medium" href="#projects">Projects</a>
+          <Link className="rounded-md border border-gray-300 px-3 py-2 font-medium" href="/profile">Settings</Link>
+        </nav>
+
         {error ? (
-          <p className="mb-5 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <p aria-live="assertive" className="mb-5 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
             {error}
           </p>
         ) : null}
         {notice ? (
-          <p className="mb-5 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+          <p aria-live="polite" className="mb-5 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700" role="status">
             {notice}
           </p>
         ) : null}
 
         <div className="grid gap-6">
-          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm" id="projects">
             <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
               <div>
                 <h2 className="text-base font-semibold text-gray-950">Projects</h2>
@@ -704,7 +745,7 @@ export default function DashboardPage() {
                 onClick={runAudit}
                 type="button"
               >
-                {auditing ? "Running audit..." : "Run audit"}
+                {auditing ? "Running checklist..." : "Run readiness checklist"}
               </button>
             </div>
 
@@ -745,6 +786,7 @@ export default function DashboardPage() {
                     onChange={(event) => setProjectName(event.target.value)}
                     required
                     value={projectName}
+                    maxLength={120}
                   />
                 </label>
                 <label className="block">
@@ -756,6 +798,7 @@ export default function DashboardPage() {
                     placeholder="postgres://production-db"
                     required
                     value={projectTarget}
+                    maxLength={2048}
                   />
                 </label>
                 <div className="flex items-end">
@@ -791,6 +834,7 @@ export default function DashboardPage() {
                   disabled={analyzingFile || !selectedProjectID}
                   onChange={(event) => setAnalysisFile(event.target.files?.[0] ?? null)}
                   type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,.txt,application/pdf,image/jpeg,image/png,text/plain"
                 />
               </label>
               <button
@@ -811,6 +855,7 @@ export default function DashboardPage() {
                   onChange={(event) => setAnalysisURL(event.target.value)}
                   placeholder="https://example.com"
                   type="url"
+                  maxLength={2048}
                   value={analysisURL}
                 />
               </label>
@@ -825,10 +870,10 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        <section className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <section className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm" id="analyses">
           <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
             <div>
-              <h2 className="text-base font-semibold text-gray-950">Audit results</h2>
+              <h2 className="text-base font-semibold text-gray-950">Project readiness checklists</h2>
               <p className="mt-1 text-sm text-gray-600">
                 {selectedProject
                   ? `Latest results for ${selectedProject.name}.`
@@ -1016,9 +1061,14 @@ export default function DashboardPage() {
                 <h2 className="text-base font-semibold text-gray-950">Analysis details</h2>
                 <p className="mt-1 text-sm text-gray-600">{selectedAnalysis.summary}</p>
               </div>
+              <div className="flex flex-wrap items-center gap-2">
+              <button className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium" onClick={() => exportSelectedAnalysis("json")} type="button">Export JSON</button>
+              <button className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium" onClick={() => exportSelectedAnalysis("pdf")} type="button">Export static PDF</button>
+              <button className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium" onClick={() => navigator.clipboard.writeText(`${window.location.origin}/analyses/${selectedAnalysis.analysisId}`).then(() => setNotice("Analysis link copied."), () => setError("Could not copy the analysis link."))} type="button">Copy link</button>
               <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${riskBadgeClass(selectedAnalysis.riskScore.level)}`}>
                 {selectedAnalysis.riskScore.level} risk · {selectedAnalysis.riskScore.score}
               </span>
+              </div>
             </div>
 
             <ol className="mt-5 grid gap-2 text-xs font-semibold uppercase text-gray-500 sm:grid-cols-5">
@@ -1283,6 +1333,42 @@ export default function DashboardPage() {
       </div>
     </main>
   );
+}
+
+function downloadGeneratedFile(filename: string, mimeType: string, content: string) {
+  const url = URL.createObjectURL(new Blob([content], { type: mimeType }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function buildStaticPDF(analysis: AnalysisDetail) {
+  const lines = [
+    "DataGuardian static analysis report",
+    `Analysis: ${analysis.analysisId}`,
+    `Input: ${analysis.inputType}`,
+    `Status: ${analysis.status}`,
+    `Risk: ${analysis.riskScore.level} (${analysis.riskScore.score})`,
+    `Summary: ${analysis.summary}`,
+    ...analysis.findings.map((finding) => `${finding.severity} ${finding.code}: ${finding.title}`),
+    "Sanitized copies remove supported metadata only and may still contain malicious content.",
+  ].map((line) => line.replace(/[^\x20-\x7E]/g, "?").slice(0, 100));
+  const stream = `BT /F1 11 Tf 50 790 Td ${lines.map((line, index) => `${index ? "0 -18 Td " : ""}(${line.replace(/[\\()]/g, "\\$&")}) Tj`).join(" ")} ET`;
+  const objects = [
+    "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
+    "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
+    "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj",
+    "4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj",
+    `5 0 obj << /Length ${stream.length} >> stream\n${stream}\nendstream endobj`,
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  for (const object of objects) { offsets.push(pdf.length); pdf += `${object}\n`; }
+  const xref = pdf.length;
+  pdf += `xref\n0 6\n0000000000 65535 f \n${offsets.slice(1).map((offset) => `${String(offset).padStart(10, "0")} 00000 n `).join("\n")}\n`;
+  return `${pdf}trailer << /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
 }
 
 function riskBadgeClass(level: string) {
