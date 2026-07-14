@@ -107,24 +107,23 @@ use the package manager for your operating system.
 ### Beginner Start
 
 After cloning or downloading the repository, start with `START-HERE.txt` if you
-want the shortest path. If you downloaded a ZIP, extract it first; do not run
-the launchers from inside the compressed ZIP viewer.
+want the shortest path. If you downloaded a ZIP, extract it first.
 
-Use the launcher for your system. It checks Docker, runs the normal Docker
-Compose startup commands, waits for readiness, and shows the local app URL. It
-does not install system services, change system settings, or replace Docker as
-the runtime.
+DataGuardian is Docker-first. The primary startup path is the explicit Docker
+Compose command below. Docker must already be installed and running.
 
-Windows:
-
-```text
-Double-click start-dataguardian.bat
-```
-
-Linux or macOS:
+Windows PowerShell, Linux, or macOS:
 
 ```bash
-./start-dataguardian.sh
+docker compose up --build
+```
+
+Optional helper launchers are also included for users who prefer a guided
+wrapper after Docker is already running:
+
+```text
+Windows: double-click start-dataguardian.bat
+Linux/macOS: ./start-dataguardian.sh
 ```
 
 The app is available at:
@@ -143,8 +142,10 @@ test  / test123
 The first startup can take a few minutes while Docker builds the backend and
 frontend images.
 
-The launchers ask before opening your browser. If you prefer full manual
-control, use the Docker command below instead.
+The launchers check Docker, print and run the normal Docker Compose startup
+commands in this folder, wait for readiness, and ask before opening your
+browser. They do not install services, start Docker Desktop, change system
+settings, or replace Docker as the runtime.
 
 For portable ZIP downloads, keep the launcher files in the project folder.
 Beginner-facing files are `START-HERE.txt`, `start-dataguardian.bat`,
@@ -158,7 +159,7 @@ file and URL analysis. These checks are optional for normal users.
 
 ### Docker Command Start
 
-After cloning the repository, start everything with:
+After cloning or extracting the repository, start everything with:
 
 ```bash
 docker compose up --build
@@ -191,10 +192,10 @@ cd dataguardian
 4. Start DataGuardian:
 
 ```bash
-./start-dataguardian.sh
+docker compose up --build
 ```
 
-5. The launcher asks whether to open the browser. You can also open:
+5. Open:
 
 ```text
 http://localhost:3000
@@ -224,12 +225,11 @@ cd dataguardian
 
 5. Start DataGuardian:
 
-```text
-Double-click start-dataguardian.bat
+```powershell
+docker compose up --build
 ```
 
-6. The launcher prints the Docker Compose commands it runs and asks before
-   opening the browser. You can also open:
+6. Open:
 
 ```text
 http://localhost:3000
@@ -258,10 +258,10 @@ cd dataguardian
 5. Start DataGuardian:
 
 ```bash
-./start-dataguardian.sh
+docker compose up --build
 ```
 
-6. The launcher asks whether to open the browser. You can also open:
+6. Open:
 
 ```text
 http://localhost:3000
@@ -296,12 +296,13 @@ checks listed below from PowerShell.
 
 If startup fails:
 
-- Docker not installed: install Docker Desktop, then run the launcher again.
+- Docker not installed: install Docker Desktop, then run
+  `docker compose up --build` again.
 - Docker not running: open Docker Desktop yourself and wait until it says
-  Docker is running. The launcher does not start Docker Desktop automatically.
+  Docker is running. DataGuardian does not start Docker Desktop automatically.
 - Ports busy: DataGuardian uses ports `3000`, `8000`, and `5434`. On Linux or
   macOS, run `./scripts/doctor.sh` to inspect them. On Windows, close the other
-  app using the port and rerun `start-dataguardian.bat`.
+  app using the port and rerun `docker compose up --build`.
 - Stack started but app did not open: visit `http://localhost:3000` manually.
 - Health check failed: inspect logs with `docker compose logs backend-go frontend`.
 - Smoke check failed: restart the stack, confirm `http://localhost:3000` opens,
@@ -314,11 +315,10 @@ Restart without deleting local data:
 
 ```bash
 docker compose down
-./start-dataguardian.sh
+docker compose up --build
 ```
 
-On Windows, run `docker compose down` in PowerShell, then double-click
-`start-dataguardian.bat` again.
+On Windows, run both commands in PowerShell.
 
 Reset local data only when you intentionally want to remove the local database
 and stored analysis files:

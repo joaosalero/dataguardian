@@ -3,8 +3,6 @@
 ## [Unreleased]
 
 ### Added
-- Deterministic safe demonstration corpus with clean, inert suspicious, and rejected samples
-- Reproducible sample generator, checksums, and analyzer behavior tests
 - Local JSON and static PDF analysis exports
 - Read-only profile page and persistent dark mode
 - Versioned schema migration tracking and history indexes
