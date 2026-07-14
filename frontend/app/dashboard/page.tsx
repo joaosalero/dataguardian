@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { LanguageSwitcher, useI18n } from "../i18n";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -128,6 +129,7 @@ async function parseError(response: Response) {
 }
 
 export default function DashboardPage() {
+  const { locale, t } = useI18n();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [projects, setProjects] = useState<Project[]>([]);
@@ -260,7 +262,7 @@ export default function DashboardPage() {
       downloadGeneratedFile(`dataguardian-analysis-${selectedAnalysis.analysisId}.json`, "application/json", JSON.stringify(selectedAnalysis, null, 2));
       return;
     }
-    downloadGeneratedFile(`dataguardian-analysis-${selectedAnalysis.analysisId}.pdf`, "application/pdf", buildStaticPDF(selectedAnalysis));
+      downloadGeneratedFile(`dataguardian-analysis-${selectedAnalysis.analysisId}.pdf`, "application/pdf", buildStaticPDF(selectedAnalysis, locale));
   }
 
   async function apiFetch(path: string, init?: RequestInit) {
@@ -695,28 +697,29 @@ export default function DashboardPage() {
           <div>
             <h1 className="text-3xl font-semibold text-gray-950">DataGuardian</h1>
             <p className="mt-1 text-sm text-gray-600">
-              {email ? `Signed in as ${email}.` : "Verifying your session."}
+              {email ? (locale === "pt-BR" ? `Conectado como ${email}.` : `Signed in as ${email}.`) : (locale === "pt-BR" ? "Verificando sua sessão." : "Verifying your session.")}
             </p>
           </div>
-          <div className="flex gap-2">
-          <Link className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50" href="/profile">Profile</Link>
+          <div className="flex flex-wrap items-center gap-2">
+          <LanguageSwitcher />
+          <Link className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50" href="/profile">{t("dashboard.profile", "Profile")}</Link>
           <button className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50" onClick={toggleDarkMode} type="button">
-            {darkMode ? "Light mode" : "Dark mode"}
+            {darkMode ? t("dashboard.lightMode", "Light mode") : t("dashboard.darkMode", "Dark mode")}
           </button>
           <button
             className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
             onClick={logout}
             type="button"
           >
-            Sign out
+            {t("auth.signOut", "Sign out")}
           </button>
           </div>
         </header>
 
         <nav aria-label="Primary" className="mb-5 flex flex-wrap gap-2 text-sm">
-          <a className="rounded-md bg-gray-950 px-3 py-2 font-medium text-white" href="#analyses">Analyses</a>
-          <a className="rounded-md border border-gray-300 px-3 py-2 font-medium" href="#projects">Projects</a>
-          <Link className="rounded-md border border-gray-300 px-3 py-2 font-medium" href="/profile">Settings</Link>
+          <a className="rounded-md bg-gray-950 px-3 py-2 font-medium text-white" href="#analyses">{t("dashboard.analyses", "Analyses")}</a>
+          <a className="rounded-md border border-gray-300 px-3 py-2 font-medium" href="#projects">{t("dashboard.projects", "Projects")}</a>
+          <Link className="rounded-md border border-gray-300 px-3 py-2 font-medium" href="/profile">{t("dashboard.settings", "Settings")}</Link>
         </nav>
 
         {error ? (
@@ -734,9 +737,9 @@ export default function DashboardPage() {
           <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm" id="projects">
             <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
               <div>
-                <h2 className="text-base font-semibold text-gray-950">Projects</h2>
+                <h2 className="text-base font-semibold text-gray-950">{t("dashboard.projects", "Projects")}</h2>
                 <p className="mt-1 text-sm text-gray-600">
-                  {loading ? "Loading projects." : `${projects.length} project${projects.length === 1 ? "" : "s"} tracked.`}
+                  {loading ? (locale === "pt-BR" ? "Carregando projetos." : "Loading projects.") : locale === "pt-BR" ? `${projects.length} projeto${projects.length === 1 ? "" : "s"} acompanhado${projects.length === 1 ? "" : "s"}.` : `${projects.length} project${projects.length === 1 ? "" : "s"} tracked.`}
                 </p>
               </div>
               <button
@@ -745,7 +748,7 @@ export default function DashboardPage() {
                 onClick={runAudit}
                 type="button"
               >
-                {auditing ? "Running checklist..." : "Run readiness checklist"}
+                {auditing ? (locale === "pt-BR" ? "Executando checklist..." : "Running checklist...") : (locale === "pt-BR" ? "Executar checklist de prontidão" : "Run readiness checklist")}
               </button>
             </div>
 
@@ -779,7 +782,7 @@ export default function DashboardPage() {
               </summary>
               <form className="mt-4 grid gap-4 lg:grid-cols-[1fr_1fr_auto]" onSubmit={createProject}>
                 <label className="block">
-                  <span className="text-sm font-medium text-gray-700">Project name</span>
+                  <span className="text-sm font-medium text-gray-700">{locale === "pt-BR" ? "Nome do projeto" : "Project name"}</span>
                   <input
                     className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900"
                     disabled={saving}
@@ -790,7 +793,7 @@ export default function DashboardPage() {
                   />
                 </label>
                 <label className="block">
-                  <span className="text-sm font-medium text-gray-700">Database target</span>
+                  <span className="text-sm font-medium text-gray-700">{locale === "pt-BR" ? "Destino do banco de dados" : "Database target"}</span>
                   <input
                     className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900"
                     disabled={saving}
@@ -807,7 +810,7 @@ export default function DashboardPage() {
                     disabled={saving || !projectName.trim() || !projectTarget.trim()}
                     type="submit"
                   >
-                    {saving ? "Creating..." : "Create project"}
+                    {saving ? (locale === "pt-BR" ? "Criando..." : "Creating...") : (locale === "pt-BR" ? "Criar projeto" : "Create project")}
                   </button>
                 </div>
               </form>
@@ -817,18 +820,18 @@ export default function DashboardPage() {
 
         <section className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
           <div>
-            <h2 className="text-base font-semibold text-gray-950">Run Analysis</h2>
+            <h2 className="text-base font-semibold text-gray-950">{t("dashboard.runAnalysis", "Run Analysis")}</h2>
             <p className="mt-1 text-sm text-gray-600">
               {selectedProject
                 ? `New analyses will be saved to ${selectedProject.name}.`
-                : "Create or select a project before running an analysis."}
+                : locale === "pt-BR" ? "Crie ou selecione um projeto antes de executar uma análise." : "Create or select a project before running an analysis."}
             </p>
           </div>
 
           <div className="mt-5 grid gap-5 lg:grid-cols-2">
             <form className="space-y-4" onSubmit={analyzeFile}>
               <label className="block">
-                <span className="text-sm font-medium text-gray-700">Analysis file</span>
+                <span className="text-sm font-medium text-gray-700">{locale === "pt-BR" ? "Arquivo para análise" : "Analysis file"}</span>
                 <input
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900"
                   disabled={analyzingFile || !selectedProjectID}
@@ -842,13 +845,13 @@ export default function DashboardPage() {
                 disabled={analyzingFile || !selectedProjectID || !analysisFile}
                 type="submit"
               >
-                {analyzingFile ? "Analyzing file..." : "Analyze File"}
+                {analyzingFile ? t("dashboard.analyzingFile", "Analyzing file...") : t("dashboard.analyzeFile", "Analyze File")}
               </button>
             </form>
 
             <form className="space-y-4" onSubmit={analyzeURL}>
               <label className="block">
-                <span className="text-sm font-medium text-gray-700">URL to analyze</span>
+                <span className="text-sm font-medium text-gray-700">{locale === "pt-BR" ? "URL para análise" : "URL to analyze"}</span>
                 <input
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900"
                   disabled={analyzingURL || !selectedProjectID}
@@ -864,7 +867,7 @@ export default function DashboardPage() {
                 disabled={analyzingURL || !selectedProjectID || !analysisURL.trim()}
                 type="submit"
               >
-                {analyzingURL ? "Analyzing URL..." : "Analyze URL"}
+                {analyzingURL ? t("dashboard.analyzingUrl", "Analyzing URL...") : t("dashboard.analyzeUrl", "Analyze URL")}
               </button>
             </form>
           </div>
@@ -873,11 +876,11 @@ export default function DashboardPage() {
         <section className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm" id="analyses">
           <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
             <div>
-              <h2 className="text-base font-semibold text-gray-950">Project readiness checklists</h2>
+              <h2 className="text-base font-semibold text-gray-950">{locale === "pt-BR" ? "Checklists de prontidão do projeto" : "Project readiness checklists"}</h2>
               <p className="mt-1 text-sm text-gray-600">
                 {selectedProject
                   ? `Latest results for ${selectedProject.name}.`
-                  : "Select or create a project to view audit results."}
+                  : locale === "pt-BR" ? "Selecione ou crie um projeto para visualizar os resultados da auditoria." : "Select or create a project to view audit results."}
               </p>
             </div>
           </div>
@@ -902,7 +905,7 @@ export default function DashboardPage() {
 
           {selectedProject && audits.length === 0 ? (
             <p className="mt-5 rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
-              No audit results yet. Run an audit to generate the first baseline report.
+              {locale === "pt-BR" ? "Ainda não há resultados de auditoria. Execute uma auditoria para gerar o primeiro relatório de referência." : "No audit results yet. Run an audit to generate the first baseline report."}
             </p>
           ) : null}
         </section>
@@ -910,61 +913,58 @@ export default function DashboardPage() {
         <section className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
             <div>
-              <h2 className="text-base font-semibold text-gray-950">Analysis history</h2>
+              <h2 className="text-base font-semibold text-gray-950">{t("dashboard.analysisHistory", "Analysis history")}</h2>
               <p className="mt-1 text-sm text-gray-600">
                 {loading
-                  ? "Loading analyses."
-                  : `${analysisPagination.totalItems} matching analysis run${analysisPagination.totalItems === 1 ? "" : "s"}.`}
+                  ? (locale === "pt-BR" ? "Carregando análises." : "Loading analyses.")
+                  : locale === "pt-BR" ? `${analysisPagination.totalItems} análise${analysisPagination.totalItems === 1 ? "" : "s"} correspondente${analysisPagination.totalItems === 1 ? "" : "s"}.` : `${analysisPagination.totalItems} matching analysis run${analysisPagination.totalItems === 1 ? "" : "s"}.`}
               </p>
             </div>
           </div>
 
           <div className="mt-5 grid gap-3 md:grid-cols-4">
             <label className="block">
-              <span className="text-xs font-semibold uppercase text-gray-500">Type</span>
+              <span className="text-xs font-semibold uppercase text-gray-500">{t("dashboard.type", "Type")}</span>
               <select
                 className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900"
                 onChange={(event) => updateAnalysisFilters({ ...analysisFilters, inputType: event.target.value as AnalysisFilters["inputType"] })}
                 value={analysisFilters.inputType}
               >
-                <option value="">All types</option>
-                <option value="FILE">Files</option>
+                <option value="">{locale === "pt-BR" ? "Todos os tipos" : "All types"}</option>
+                <option value="FILE">{locale === "pt-BR" ? "Arquivos" : "Files"}</option>
                 <option value="URL">URLs</option>
               </select>
             </label>
             <label className="block">
-              <span className="text-xs font-semibold uppercase text-gray-500">Risk</span>
+              <span className="text-xs font-semibold uppercase text-gray-500">{t("dashboard.risk", "Risk")}</span>
               <select
                 className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900"
                 onChange={(event) => updateAnalysisFilters({ ...analysisFilters, riskLevel: event.target.value as AnalysisFilters["riskLevel"] })}
                 value={analysisFilters.riskLevel}
               >
-                <option value="">All risks</option>
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
+                <option value="">{locale === "pt-BR" ? "Todos os riscos" : "All risks"}</option>
+                <option value="LOW">{localizedEnum("LOW", locale)}</option>
+                <option value="MEDIUM">{localizedEnum("MEDIUM", locale)}</option>
+                <option value="HIGH">{localizedEnum("HIGH", locale)}</option>
               </select>
             </label>
             <label className="block">
-              <span className="text-xs font-semibold uppercase text-gray-500">Status</span>
+              <span className="text-xs font-semibold uppercase text-gray-500">{t("dashboard.status", "Status")}</span>
               <select
                 className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900"
                 onChange={(event) => updateAnalysisFilters({ ...analysisFilters, status: event.target.value as AnalysisFilters["status"] })}
                 value={analysisFilters.status}
               >
-                <option value="">All statuses</option>
-                <option value="COMPLETED">Completed</option>
-                <option value="PROCESSING">Processing</option>
-                <option value="FAILED">Failed</option>
-                <option value="PENDING">Pending</option>
+                <option value="">{locale === "pt-BR" ? "Todos os status" : "All statuses"}</option>
+                {(["COMPLETED", "PROCESSING", "FAILED", "PENDING"] as const).map((status) => <option key={status} value={status}>{localizedEnum(status, locale)}</option>)}
               </select>
             </label>
             {isAdmin ? (
               <div className="rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-600">
-                <span className="block text-xs font-semibold uppercase text-gray-500">Storage</span>
+                <span className="block text-xs font-semibold uppercase text-gray-500">{t("dashboard.storage", "Storage")}</span>
                 {storageSummary
                   ? `${storageSummary.fileCount} file${storageSummary.fileCount === 1 ? "" : "s"} - ${formatBytes(storageSummary.totalBytes)}`
-                  : "Not available"}
+                  : t("common.notAvailable", "Not available")}
               </div>
             ) : null}
           </div>
@@ -974,11 +974,11 @@ export default function DashboardPage() {
               <table className="w-full border-collapse text-left text-sm">
                 <thead>
                   <tr className="border-b border-gray-200 text-xs uppercase text-gray-500">
-                    <th className="py-2 pr-4 font-semibold">Type</th>
-                    <th className="py-2 pr-4 font-semibold">Risk</th>
-                    <th className="py-2 pr-4 font-semibold">Status</th>
-                    <th className="py-2 pr-4 font-semibold">Created</th>
-                    <th className="py-2 font-semibold">Actions</th>
+                    <th className="py-2 pr-4 font-semibold">{t("dashboard.type", "Type")}</th>
+                    <th className="py-2 pr-4 font-semibold">{t("dashboard.risk", "Risk")}</th>
+                    <th className="py-2 pr-4 font-semibold">{t("dashboard.status", "Status")}</th>
+                    <th className="py-2 pr-4 font-semibold">{locale === "pt-BR" ? "Criada em" : "Created"}</th>
+                    <th className="py-2 font-semibold">{locale === "pt-BR" ? "Ações" : "Actions"}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -987,11 +987,11 @@ export default function DashboardPage() {
                       <td className="py-3 pr-4 font-medium text-gray-950">{analysis.inputType}</td>
                       <td className="py-3 pr-4">
                         <span className={`rounded-full px-2 py-1 text-xs font-semibold ${riskBadgeClass(analysis.riskLevel)}`}>
-                          {analysis.riskLevel}
+                          {localizedEnum(analysis.riskLevel, locale)}
                         </span>
                       </td>
-                      <td className="py-3 pr-4 text-gray-700">{analysis.status}</td>
-                      <td className="py-3 pr-4 text-gray-600">{formatDate(analysis.createdAt)}</td>
+                      <td className="py-3 pr-4 text-gray-700">{localizedEnum(analysis.status, locale)}</td>
+                      <td className="py-3 pr-4 text-gray-600">{formatDate(analysis.createdAt, locale)}</td>
                       <td className="py-3">
                         <div className="flex flex-wrap gap-2">
                           <button
@@ -1000,7 +1000,7 @@ export default function DashboardPage() {
                             onClick={() => selectAnalysis(analysis.analysisId)}
                             type="button"
                           >
-                            View
+                            {t("dashboard.view", "View")}
                           </button>
                           <button
                             className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
@@ -1008,7 +1008,7 @@ export default function DashboardPage() {
                             onClick={() => deleteAnalysis(analysis.analysisId)}
                             type="button"
                           >
-                            {deletingAnalysisID === analysis.analysisId ? "Deleting..." : "Delete"}
+                            {deletingAnalysisID === analysis.analysisId ? (locale === "pt-BR" ? "Excluindo..." : "Deleting...") : t("dashboard.delete", "Delete")}
                           </button>
                         </div>
                       </td>
@@ -1020,17 +1020,17 @@ export default function DashboardPage() {
           ) : !loading ? (
             <p className="mt-5 rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
               {analysisPagination.totalItems > 0
-                ? "No analyses are shown on this page. Use Previous or adjust the filters."
+                ? (locale === "pt-BR" ? "Nenhuma análise é exibida nesta página. Use Anterior ou ajuste os filtros." : "No analyses are shown on this page. Use Previous or adjust the filters.")
                 : hasAnalysisFilters
-                  ? "No analyses match the current filters. Try clearing one filter."
-                  : "No analyses yet. Upload a file or submit a URL to create the first result."}
+                  ? (locale === "pt-BR" ? "Nenhuma análise corresponde aos filtros atuais. Tente limpar um filtro." : "No analyses match the current filters. Try clearing one filter.")
+                  : (locale === "pt-BR" ? "Ainda não há análises. Envie um arquivo ou uma URL para criar o primeiro resultado." : "No analyses yet. Upload a file or submit a URL to create the first result.")}
             </p>
           ) : null}
 
           {analysisPagination.totalPages > 0 ? (
             <div className="mt-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
               <p className="text-sm text-gray-600">
-                Page {analysisPagination.page} of {analysisPagination.totalPages}
+                {locale === "pt-BR" ? `Página ${analysisPagination.page} de ${analysisPagination.totalPages}` : `Page ${analysisPagination.page} of ${analysisPagination.totalPages}`}
               </p>
               <div className="flex gap-2">
                 <button
@@ -1039,7 +1039,7 @@ export default function DashboardPage() {
                   onClick={() => changeAnalysisPage(analysisPagination.page - 1)}
                   type="button"
                 >
-                  Previous
+                  {t("dashboard.previous", "Previous")}
                 </button>
                 <button
                   className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
@@ -1047,7 +1047,7 @@ export default function DashboardPage() {
                   onClick={() => changeAnalysisPage(analysisPagination.page + 1)}
                   type="button"
                 >
-                  Next
+                  {t("dashboard.next", "Next")}
                 </button>
               </div>
             </div>
@@ -1058,21 +1058,21 @@ export default function DashboardPage() {
           <section className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
             <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
               <div>
-                <h2 className="text-base font-semibold text-gray-950">Analysis details</h2>
-                <p className="mt-1 text-sm text-gray-600">{selectedAnalysis.summary}</p>
+                <h2 className="text-base font-semibold text-gray-950">{t("dashboard.analysisDetails", "Analysis details")}</h2>
+                <p className="mt-1 text-sm text-gray-600">{localizedSummary(selectedAnalysis.summary, locale)}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-              <button className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium" onClick={() => exportSelectedAnalysis("json")} type="button">Export JSON</button>
-              <button className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium" onClick={() => exportSelectedAnalysis("pdf")} type="button">Export static PDF</button>
-              <button className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium" onClick={() => navigator.clipboard.writeText(`${window.location.origin}/analyses/${selectedAnalysis.analysisId}`).then(() => setNotice("Analysis link copied."), () => setError("Could not copy the analysis link."))} type="button">Copy link</button>
+              <button className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium" onClick={() => exportSelectedAnalysis("json")} type="button">{t("dashboard.exportJson", "Export JSON")}</button>
+              <button className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium" onClick={() => exportSelectedAnalysis("pdf")} type="button">{t("dashboard.exportPdf", "Export static PDF")}</button>
+              <button className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium" onClick={() => navigator.clipboard.writeText(`${window.location.origin}/analyses/${selectedAnalysis.analysisId}`).then(() => setNotice(t("dashboard.linkCopied", "Analysis link copied.")), () => setError("Could not copy the analysis link."))} type="button">{t("dashboard.copyLink", "Copy link")}</button>
               <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${riskBadgeClass(selectedAnalysis.riskScore.level)}`}>
-                {selectedAnalysis.riskScore.level} risk · {selectedAnalysis.riskScore.score}
+                {localizedEnum(selectedAnalysis.riskScore.level, locale)} {locale === "pt-BR" ? "risco" : "risk"} · {selectedAnalysis.riskScore.score}
               </span>
               </div>
             </div>
 
             <ol className="mt-5 grid gap-2 text-xs font-semibold uppercase text-gray-500 sm:grid-cols-5">
-              {["Inspect", "Review Risk", "Review Findings", "Review Preview", "Decide Download"].map((step, index) => (
+              {(locale === "pt-BR" ? ["Inspecionar", "Revisar risco", "Revisar achados", "Revisar prévia", "Decidir download"] : ["Inspect", "Review Risk", "Review Findings", "Review Preview", "Decide Download"]).map((step, index) => (
                 <li className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2" key={step}>
                   <span className="mr-2 text-gray-400">{index + 1}</span>
                   {step}
@@ -1082,23 +1082,23 @@ export default function DashboardPage() {
 
             <div className="mt-5 grid gap-5 lg:grid-cols-2">
               <div>
-                <h3 className="text-sm font-semibold text-gray-950">Review Findings</h3>
+                <h3 className="text-sm font-semibold text-gray-950">{t("dashboard.findings", "Review Findings")}</h3>
                 {selectedAnalysis.findings.length > 0 ? (
                   <div className="mt-3 space-y-3">
                     {selectedAnalysis.findings.map((finding) => (
                       <article className="rounded-lg border border-gray-200 p-3" key={`${finding.id}-${finding.code}`}>
                         <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm font-semibold text-gray-950">{finding.title}</p>
-                          <span className="text-xs font-medium text-gray-500">{finding.severity}</span>
+                          <p className="text-sm font-semibold text-gray-950">{localizedFinding(finding, locale).title}</p>
+                          <span className="text-xs font-medium text-gray-500">{localizedEnum(finding.severity, locale)}</span>
                         </div>
                         <p className="mt-1 text-xs text-gray-500">{finding.code}</p>
-                        <p className="mt-2 text-sm text-gray-600">{finding.description}</p>
+                        <p className="mt-2 text-sm text-gray-600">{localizedFinding(finding, locale).description}</p>
                         {finding.explanation ? (
-                          <p className="mt-3 text-sm text-gray-700">{finding.explanation}</p>
+                          <p className="mt-3 text-sm text-gray-700">{localizedFinding(finding, locale).explanation}</p>
                         ) : null}
                         {finding.recommendation ? (
                           <p className="mt-2 text-sm font-medium text-gray-800">
-                            Mitigation: {finding.recommendation}
+                            {locale === "pt-BR" ? "Mitigação" : "Mitigation"}: {localizedFinding(finding, locale).recommendation}
                           </p>
                         ) : null}
                       </article>
@@ -1106,13 +1106,13 @@ export default function DashboardPage() {
                   </div>
                 ) : (
                   <p className="mt-3 rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
-                    No findings were recorded for this analysis.
+                    {locale === "pt-BR" ? "Nenhum achado foi registrado para esta análise." : "No findings were recorded for this analysis."}
                   </p>
                 )}
               </div>
 
               <div>
-                <h3 className="text-sm font-semibold text-gray-950">Review Metadata</h3>
+                <h3 className="text-sm font-semibold text-gray-950">{t("dashboard.metadata", "Review Metadata")}</h3>
                 {visibleMetadataEntries.length > 0 ? (
                   <dl className="mt-3 divide-y divide-gray-100 rounded-lg border border-gray-200">
                     {visibleMetadataEntries.map((entry) => (
@@ -1129,7 +1129,7 @@ export default function DashboardPage() {
                   </dl>
                 ) : (
                   <p className="mt-3 rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
-                    No metadata entries were recorded for this analysis.
+                    {locale === "pt-BR" ? "Nenhum metadado foi registrado para esta análise." : "No metadata entries were recorded for this analysis."}
                   </p>
                 )}
               </div>
@@ -1137,38 +1137,38 @@ export default function DashboardPage() {
 
             {loadingAnalysis ? (
               <p className="mt-5 rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
-                Loading analysis details.
+                {locale === "pt-BR" ? "Carregando detalhes da análise." : "Loading analysis details."}
               </p>
             ) : null}
 
             {selectedAnalysis.inputType === "URL" && selectedAnalysis.file ? (
               <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50/40 p-4">
-                <h3 className="text-sm font-semibold text-gray-950">Remote File Inspection</h3>
+                <h3 className="text-sm font-semibold text-gray-950">{locale === "pt-BR" ? "Inspeção de arquivo remoto" : "Remote File Inspection"}</h3>
                 <div className="mt-3 space-y-3 text-sm text-gray-700">
                   <dl className="grid gap-2 sm:grid-cols-3">
                     <div>
-                      <dt className="text-xs font-semibold uppercase text-gray-500">Source</dt>
-                      <dd className="mt-1 text-gray-900">Downloaded from submitted URL</dd>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">{locale === "pt-BR" ? "Origem" : "Source"}</dt>
+                      <dd className="mt-1 text-gray-900">{locale === "pt-BR" ? "Baixado da URL enviada" : "Downloaded from submitted URL"}</dd>
                     </div>
                     <div>
                       <dt className="text-xs font-semibold uppercase text-gray-500">MIME type</dt>
                       <dd className="mt-1 break-words text-gray-900">{selectedAnalysis.file.mimeType}</dd>
                     </div>
                     <div>
-                      <dt className="text-xs font-semibold uppercase text-gray-500">File size</dt>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">{locale === "pt-BR" ? "Tamanho do arquivo" : "File size"}</dt>
                       <dd className="mt-1 text-gray-900">{formatBytes(selectedAnalysis.file.sizeBytes)}</dd>
                     </div>
                     <div>
-                      <dt className="text-xs font-semibold uppercase text-gray-500">Risk level</dt>
-                      <dd className="mt-1 text-gray-900">{selectedAnalysis.riskScore.level}</dd>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">{locale === "pt-BR" ? "Nível de risco" : "Risk level"}</dt>
+                      <dd className="mt-1 text-gray-900">{localizedEnum(selectedAnalysis.riskScore.level, locale)}</dd>
                     </div>
                   </dl>
                   <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                    This remote file was fetched into the backend inspection environment and inspected before any local download. This reduces direct exposure, but it does not guarantee malware detection.
+                    {locale === "pt-BR" ? "Este arquivo remoto foi obtido e inspecionado no ambiente do backend antes de qualquer download local. Isso reduz a exposição direta, mas não garante a detecção de malware." : "This remote file was fetched into the backend inspection environment and inspected before any local download. This reduces direct exposure, but it does not guarantee malware detection."}
                   </p>
                   {selectedAnalysis.riskScore.level === "HIGH" ? (
                     <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                      High risk: this original remote file may still contain unsafe content. Review findings carefully before choosing to download it locally.
+                      {locale === "pt-BR" ? "Alto risco: este arquivo remoto original ainda pode conter conteúdo inseguro. Revise os achados com atenção antes de baixá-lo localmente." : "High risk: this original remote file may still contain unsafe content. Review findings carefully before choosing to download it locally."}
                     </p>
                   ) : null}
                 </div>
@@ -1177,18 +1177,18 @@ export default function DashboardPage() {
 
             <div className={`mt-5 rounded-lg border p-4 ${selectedAnalysis.riskScore.level === "HIGH" ? "border-red-200 bg-red-50/30" : "border-amber-200 bg-amber-50/30"}`}>
               <h3 className="text-sm font-semibold text-gray-950">
-                {originalFileHeading(selectedAnalysis)}
+                {originalFileHeading(selectedAnalysis, locale)}
               </h3>
-              <p className="mt-1 text-xs font-semibold uppercase text-gray-500">Potentially unsafe original</p>
+              <p className="mt-1 text-xs font-semibold uppercase text-gray-500">{locale === "pt-BR" ? "Original potencialmente inseguro" : "Potentially unsafe original"}</p>
               {selectedAnalysis.file ? (
                 <div className="mt-3 space-y-3 text-sm text-gray-700">
                   <dl className="grid gap-2 sm:grid-cols-3">
                     <div>
-                      <dt className="text-xs font-semibold uppercase text-gray-500">Source</dt>
-                      <dd className="mt-1 text-gray-900">{originalFileSource(selectedAnalysis)}</dd>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">{locale === "pt-BR" ? "Origem" : "Source"}</dt>
+                      <dd className="mt-1 text-gray-900">{originalFileSource(selectedAnalysis, locale)}</dd>
                     </div>
                     <div>
-                      <dt className="text-xs font-semibold uppercase text-gray-500">Filename</dt>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">{locale === "pt-BR" ? "Nome do arquivo" : "Filename"}</dt>
                       <dd className="mt-1 break-words text-gray-900">{selectedAnalysis.file.originalFilename}</dd>
                     </div>
                     <div>
@@ -1196,12 +1196,12 @@ export default function DashboardPage() {
                       <dd className="mt-1 break-words text-gray-900">{selectedAnalysis.file.mimeType}</dd>
                     </div>
                     <div>
-                      <dt className="text-xs font-semibold uppercase text-gray-500">Size</dt>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">{locale === "pt-BR" ? "Tamanho" : "Size"}</dt>
                       <dd className="mt-1 text-gray-900">{formatBytes(selectedAnalysis.file.sizeBytes)}</dd>
                     </div>
                   </dl>
                   <p className={`rounded-md border px-3 py-2 text-sm ${selectedAnalysis.riskScore.level === "HIGH" ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-                    {originalFileWarning(selectedAnalysis)}
+                    {originalFileWarning(selectedAnalysis, locale)}
                   </p>
                   {originalFileError ? (
                     <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -1218,36 +1218,36 @@ export default function DashboardPage() {
                     onClick={downloadOriginalFile}
                     type="button"
                   >
-                    {downloadingOriginalFile ? "Downloading..." : "Download Original"}
+                    {downloadingOriginalFile ? t("common.loading", "Downloading...") : t("dashboard.downloadOriginal", "Download Original")}
                   </button>
                 </div>
               ) : (
                 <p className="mt-2 rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
-                  No original file download is available for this analysis. URL-only analyses do not store a downloadable file unless the response is a supported file type.
+                  {locale === "pt-BR" ? "Nenhum arquivo original está disponível para esta análise. Análises somente de URL não armazenam um arquivo para download, salvo quando a resposta é de um tipo compatível." : "No original file download is available for this analysis. URL-only analyses do not store a downloadable file unless the response is a supported file type."}
                 </p>
               )}
             </div>
 
             <div className="mt-5 rounded-lg border border-gray-200 p-4">
-              <h3 className="text-sm font-semibold text-gray-950">Review Preview</h3>
+              <h3 className="text-sm font-semibold text-gray-950">{t("dashboard.safePreview", "Review Preview")}</h3>
               <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                This preview is static and passive. Active file content, website JavaScript, and browser behavior are not executed.
+                {t("dashboard.securityPreview", "This preview is static and passive. Active file content, website JavaScript, and browser behavior are not executed.")}
               </p>
               {selectedAnalysis.inputType === "URL" ? (
                 <p className="mt-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                  Remote content was inspected in the backend environment before any local download, reducing direct exposure while keeping the final download decision with you.
+                  {locale === "pt-BR" ? "O conteúdo remoto foi inspecionado no ambiente do backend antes de qualquer download local, reduzindo a exposição direta e mantendo com você a decisão final de download." : "Remote content was inspected in the backend environment before any local download, reducing direct exposure while keeping the final download decision with you."}
                 </p>
               ) : null}
               {selectedAnalysis.riskScore.level === "HIGH" ? (
                 <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  This content may be unsafe. Do not trust or open locally without caution.
+                  {locale === "pt-BR" ? "Este conteúdo pode ser inseguro. Não confie nem abra localmente sem cautela." : "This content may be unsafe. Do not trust or open locally without caution."}
                 </p>
               ) : null}
               {selectedAnalysis.safePreview?.available ? (
                 <div className="mt-3">
                   {selectedAnalysis.safePreview.kind === "image" && selectedAnalysis.safePreview.dataUrl && !previewImageFailed ? (
                     <img
-                      alt="Static safe preview"
+                      alt={locale === "pt-BR" ? "Pré-visualização segura estática" : "Static safe preview"}
                       className="max-h-[520px] max-w-full rounded-md border border-gray-200 bg-gray-50 object-contain"
                       onError={() => setPreviewImageFailed(true)}
                       src={selectedAnalysis.safePreview.dataUrl}
@@ -1259,53 +1259,53 @@ export default function DashboardPage() {
                     </pre>
                   ) : null}
                   {previewShouldShowFallback(selectedAnalysis, previewImageFailed) ? (
-                    <SafePreviewFallback message={safePreviewFallbackMessage(selectedAnalysis, previewImageFailed)} />
+                    <SafePreviewFallback locale={locale} message={safePreviewFallbackMessage(selectedAnalysis, previewImageFailed, locale)} />
                   ) : null}
                 </div>
               ) : (
-                <SafePreviewFallback message={safePreviewFallbackMessage(selectedAnalysis, previewImageFailed)} />
+                <SafePreviewFallback locale={locale} message={safePreviewFallbackMessage(selectedAnalysis, previewImageFailed, locale)} />
               )}
             </div>
 
             <div className="mt-5 rounded-lg border border-sky-200 bg-sky-50/30 p-4">
-              <h3 className="text-sm font-semibold text-gray-950">Sanitized File</h3>
-              <p className="mt-1 text-xs font-semibold uppercase text-gray-500">Metadata-cleaned copy only</p>
+              <h3 className="text-sm font-semibold text-gray-950">{t("dashboard.sanitizedFile", "Sanitized File")}</h3>
+              <p className="mt-1 text-xs font-semibold uppercase text-gray-500">{locale === "pt-BR" ? "Somente cópia com metadados removidos" : "Metadata-cleaned copy only"}</p>
               {selectedAnalysis.cleanFile ? (
                 <div className="mt-3 space-y-3 text-sm text-gray-700">
                   <dl className="grid gap-2 sm:grid-cols-3">
                     <div>
-                      <dt className="text-xs font-semibold uppercase text-gray-500">Filename</dt>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">{locale === "pt-BR" ? "Nome do arquivo" : "Filename"}</dt>
                       <dd className="mt-1 break-words text-gray-900">{selectedAnalysis.cleanFile.filename}</dd>
                     </div>
                     <div>
-                      <dt className="text-xs font-semibold uppercase text-gray-500">Size</dt>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">{locale === "pt-BR" ? "Tamanho" : "Size"}</dt>
                       <dd className="mt-1 text-gray-900">{formatBytes(selectedAnalysis.cleanFile.sizeBytes)}</dd>
                     </div>
                     <div>
-                      <dt className="text-xs font-semibold uppercase text-gray-500">Cleaning status</dt>
-                      <dd className="mt-1 text-gray-900">{selectedAnalysis.cleanFile.cleaningStatus}</dd>
+                      <dt className="text-xs font-semibold uppercase text-gray-500">{locale === "pt-BR" ? "Status da limpeza" : "Cleaning status"}</dt>
+                      <dd className="mt-1 text-gray-900">{localizedEnum(selectedAnalysis.cleanFile.cleaningStatus, locale)}</dd>
                     </div>
                   </dl>
                   <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                    This is a separate metadata-cleaned copy. It may still contain unsafe content and does not guarantee malware removal or full safety.
+                    {t("dashboard.sanitizedWarning", "This is a separate metadata-cleaned copy. It may still contain unsafe content and does not guarantee malware removal or full safety.")}
                   </p>
                   <div>
-                    <p className="text-xs font-semibold uppercase text-gray-500">Metadata removed</p>
+                    <p className="text-xs font-semibold uppercase text-gray-500">{locale === "pt-BR" ? "Metadados removidos" : "Metadata removed"}</p>
                     {selectedAnalysis.cleanFile.removedMetadataKeys.length > 0 ? (
                       <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-gray-700">
-                        {describeRemovedMetadata(selectedAnalysis.cleanFile.removedMetadataKeys).map((item) => (
+                        {describeRemovedMetadata(selectedAnalysis.cleanFile.removedMetadataKeys, locale).map((item) => (
                           <li key={item}>{item}</li>
                         ))}
                       </ul>
                     ) : (
-                      <p className="mt-1 text-sm text-gray-600">No supported removable metadata was found in this file.</p>
+                      <p className="mt-1 text-sm text-gray-600">{locale === "pt-BR" ? "Nenhum metadado removível compatível foi encontrado neste arquivo." : "No supported removable metadata was found in this file."}</p>
                     )}
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase text-gray-500">Not removed</p>
+                    <p className="text-xs font-semibold uppercase text-gray-500">{locale === "pt-BR" ? "Não removido" : "Not removed"}</p>
                     <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-gray-700">
-                      <li>Malware, scripts, embedded content, and document behavior are not removed.</li>
-                      <li>Metadata outside the current PDF/JPEG cleanup rules may remain.</li>
+                      <li>{locale === "pt-BR" ? "Malware, scripts, conteúdo incorporado e comportamento do documento não são removidos." : "Malware, scripts, embedded content, and document behavior are not removed."}</li>
+                      <li>{locale === "pt-BR" ? "Metadados fora das regras atuais de limpeza de PDF/JPEG podem permanecer." : "Metadata outside the current PDF/JPEG cleanup rules may remain."}</li>
                     </ul>
                   </div>
                   {cleanFileError ? (
@@ -1319,12 +1319,12 @@ export default function DashboardPage() {
                     onClick={downloadCleanFile}
                     type="button"
                   >
-                    {downloadingCleanFile ? "Downloading..." : "Download Sanitized Copy"}
+                    {downloadingCleanFile ? t("common.loading", "Downloading...") : t("dashboard.downloadSanitized", "Download Sanitized Copy")}
                   </button>
                 </div>
               ) : (
                 <p className="mt-2 text-sm text-gray-600">
-                  No sanitized copy is available. This format may be unsupported, or no metadata-cleaned output was generated.
+                  {locale === "pt-BR" ? "Nenhuma cópia sanitizada está disponível. O formato pode não ser compatível ou nenhuma saída com metadados removidos foi gerada." : "No sanitized copy is available. This format may be unsupported, or no metadata-cleaned output was generated."}
                 </p>
               )}
             </div>
@@ -1344,16 +1344,16 @@ function downloadGeneratedFile(filename: string, mimeType: string, content: stri
   URL.revokeObjectURL(url);
 }
 
-function buildStaticPDF(analysis: AnalysisDetail) {
+function buildStaticPDF(analysis: AnalysisDetail, locale: "en" | "pt-BR") {
   const lines = [
-    "DataGuardian static analysis report",
-    `Analysis: ${analysis.analysisId}`,
-    `Input: ${analysis.inputType}`,
+    locale === "pt-BR" ? "Relatorio estatico de analise DataGuardian" : "DataGuardian static analysis report",
+    `${locale === "pt-BR" ? "Analise" : "Analysis"}: ${analysis.analysisId}`,
+    `${locale === "pt-BR" ? "Entrada" : "Input"}: ${analysis.inputType}`,
     `Status: ${analysis.status}`,
-    `Risk: ${analysis.riskScore.level} (${analysis.riskScore.score})`,
-    `Summary: ${analysis.summary}`,
+    `${locale === "pt-BR" ? "Risco" : "Risk"}: ${analysis.riskScore.level} (${analysis.riskScore.score})`,
+    `${locale === "pt-BR" ? "Resumo" : "Summary"}: ${analysis.summary}`,
     ...analysis.findings.map((finding) => `${finding.severity} ${finding.code}: ${finding.title}`),
-    "Sanitized copies remove supported metadata only and may still contain malicious content.",
+    locale === "pt-BR" ? "Copias sanitizadas removem apenas metadados suportados e ainda podem conter conteudo malicioso." : "Sanitized copies remove supported metadata only and may still contain malicious content.",
   ].map((line) => line.replace(/[^\x20-\x7E]/g, "?").slice(0, 100));
   const stream = `BT /F1 11 Tf 50 790 Td ${lines.map((line, index) => `${index ? "0 -18 Td " : ""}(${line.replace(/[\\()]/g, "\\$&")}) Tj`).join(" ")} ET`;
   const objects = [
@@ -1381,8 +1381,52 @@ function riskBadgeClass(level: string) {
   return "bg-green-50 text-green-700";
 }
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
+function localizedEnum(value: string, locale: "en" | "pt-BR") {
+  if (locale !== "pt-BR") return value.charAt(0) + value.slice(1).toLowerCase();
+  return ({ LOW: "Baixo", MEDIUM: "Médio", HIGH: "Alto", COMPLETED: "Concluído", PROCESSING: "Processando", FAILED: "Falhou", PENDING: "Pendente", FILE: "Arquivo", URL: "URL", INFO: "Informativo", WARNING: "Alerta", CRITICAL: "Crítico" } as Record<string, string>)[value] ?? value;
+}
+
+function localizedSummary(summary: string, locale: "en" | "pt-BR") {
+  if (locale !== "pt-BR") return summary;
+  const summaries: Record<string, string> = {
+    "File analysis completed with no findings.": "Análise do arquivo concluída sem achados.",
+    "File analysis completed with structured findings.": "Análise do arquivo concluída com achados estruturados.",
+    "URL analysis completed with no findings.": "Análise da URL concluída sem achados.",
+    "URL analysis completed with structured findings.": "Análise da URL concluída com achados estruturados.",
+    "URL analysis completed with remote file inspection.": "Análise da URL concluída com inspeção do arquivo remoto.",
+    "URL analysis completed with a remote file inspection candidate.": "Análise da URL concluída com um candidato a inspeção de arquivo remoto.",
+  };
+  return summaries[summary] ?? summary;
+}
+
+const ptBRFindingTitles: Record<string, string> = {
+  PDF_JS_DETECTED: "Marcador de JavaScript em PDF detectado",
+  PDF_OPENACTION_DETECTED: "Ação automática de abertura em PDF detectada",
+  GENERIC_BASE64_PATTERN: "Padrão Base64 detectado",
+  GENERIC_EVAL_PATTERN: "Padrão de execução dinâmica detectado",
+  METADATA_GPS_EXPOSED: "Metadados de localização expostos",
+  METADATA_AUTHOR_PRESENT: "Metadados de autoria presentes",
+  METADATA_SUSPICIOUS_PRESENT: "Metadados suspeitos presentes",
+  URL_NO_HTTPS: "A URL não utiliza HTTPS",
+  URL_REDIRECT_DETECTED: "Redirecionamento de URL detectado",
+  URL_FETCH_FAILED: "Falha ao obter a URL",
+  URL_SUSPICIOUS_CONTENT: "Conteúdo suspeito detectado na URL",
+  URL_REMOTE_FILE_DETECTED: "Arquivo remoto detectado",
+};
+
+function localizedFinding(finding: AnalysisFinding, locale: "en" | "pt-BR") {
+  if (locale !== "pt-BR") return finding;
+  return {
+    ...finding,
+    title: ptBRFindingTitles[finding.code] ?? finding.title,
+    description: `O analisador passivo identificou o indicador ${finding.code}. Consulte o código do achado e trate o conteúdo como não confiável.`,
+    explanation: finding.explanation ? "Este indicador pode aumentar o risco do conteúdo. A classificação é determinística e não implica execução nem confirmação de malware." : "",
+    recommendation: finding.recommendation ? "Revise o achado, faça uma verificação independente e evite abrir ou executar o conteúdo em um ambiente confiável." : null,
+  };
+}
+
+function formatDate(value: string, locale: "en" | "pt-BR") {
+  return new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
@@ -1411,16 +1455,23 @@ function formatBytes(value: number) {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function originalFileHeading(analysis: AnalysisDetail) {
+function originalFileHeading(analysis: AnalysisDetail, locale: "en" | "pt-BR") {
+  if (locale === "pt-BR") return analysis.inputType === "URL" ? "Arquivo remoto original" : "Arquivo enviado original";
   return analysis.inputType === "URL" ? "Original Remote File" : "Original Uploaded File";
 }
 
-function originalFileSource(analysis: AnalysisDetail) {
+function originalFileSource(analysis: AnalysisDetail, locale: "en" | "pt-BR") {
+  if (locale === "pt-BR") return analysis.inputType === "URL" ? "Resposta da URL remota" : "Envio local";
   return analysis.inputType === "URL" ? "Remote URL response" : "Local upload";
 }
 
-function originalFileWarning(analysis: AnalysisDetail) {
+function originalFileWarning(analysis: AnalysisDetail, locale: "en" | "pt-BR") {
   const source = analysis.inputType === "URL" ? "remote file" : "uploaded file";
+  if (locale === "pt-BR") {
+    const origem = analysis.inputType === "URL" ? "arquivo remoto" : "arquivo enviado";
+    if (analysis.riskScore.level === "HIGH") return `Alto risco: este ${origem} original é preservado sem alterações e ainda pode conter conteúdo inseguro. O DataGuardian reduz a exposição com inspeção passiva, mas não garante a detecção de malware.`;
+    return `Este ${origem} original é preservado sem alterações. Revise a prévia, os achados e a pontuação de risco antes de baixar ou abrir localmente.`;
+  }
   if (analysis.riskScore.level === "HIGH") {
     return `High risk: this original ${source} is preserved unchanged and may still contain unsafe content. DataGuardian reduces exposure with passive inspection, but it does not guarantee malware detection.`;
   }
@@ -1444,20 +1495,22 @@ function previewShouldShowFallback(analysis: AnalysisDetail, imageFailed: boolea
   return true;
 }
 
-function safePreviewFallbackMessage(analysis: AnalysisDetail, imageFailed: boolean) {
+function safePreviewFallbackMessage(analysis: AnalysisDetail, imageFailed: boolean, locale: "en" | "pt-BR") {
   if (imageFailed) {
+    if (locale === "pt-BR") return "Não foi possível exibir a pré-visualização segura. O arquivo ainda foi inspecionado passivamente; revise os achados e metadados antes de decidir pelo download.";
     return "Safe preview could not be displayed. The file was still inspected passively; review findings and metadata before deciding whether to download.";
   }
+  if (locale === "pt-BR") return "Pré-visualização indisponível para este conteúdo. Revise os achados, metadados e risco antes de decidir pelo download.";
   return analysis.safePreview?.message ?? "Preview unavailable for this content. Review findings, metadata, and risk before deciding whether to download.";
 }
 
-function SafePreviewFallback({ message }: { message: string }) {
+function SafePreviewFallback({ message, locale }: { message: string; locale: "en" | "pt-BR" }) {
   return (
     <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 px-4 py-5 text-sm text-gray-700">
-      <p className="font-semibold text-gray-900">Preview unavailable</p>
+      <p className="font-semibold text-gray-900">{locale === "pt-BR" ? "Pré-visualização indisponível" : "Preview unavailable"}</p>
       <p className="mt-1">{message}</p>
       <p className="mt-2 text-xs text-gray-500">
-        DataGuardian does not execute active content to generate previews.
+        {locale === "pt-BR" ? "O DataGuardian não executa conteúdo ativo para gerar pré-visualizações." : "DataGuardian does not execute active content to generate previews."}
       </p>
     </div>
   );
@@ -1476,29 +1529,29 @@ function confirmHighRiskOriginalDownload(analysis: AnalysisDetail) {
   return response === expected;
 }
 
-function describeRemovedMetadata(keys: string[]) {
+function describeRemovedMetadata(keys: string[], locale: "en" | "pt-BR") {
   const descriptions = new Set<string>();
   keys.forEach((key) => {
     switch (key) {
       case "exif":
-        descriptions.add("EXIF metadata removed, including GPS/location fields when present.");
+        descriptions.add(locale === "pt-BR" ? "Metadados EXIF removidos, incluindo campos de GPS/localização quando presentes." : "EXIF metadata removed, including GPS/location fields when present.");
         break;
       case "gps":
-        descriptions.add("GPS/location metadata removed.");
+        descriptions.add(locale === "pt-BR" ? "Metadados de GPS/localização removidos." : "GPS/location metadata removed.");
         break;
       case "author":
-        descriptions.add("Author metadata removed.");
+        descriptions.add(locale === "pt-BR" ? "Metadados de autoria removidos." : "Author metadata removed.");
         break;
       case "producer":
-        descriptions.add("Producer/tool metadata removed.");
+        descriptions.add(locale === "pt-BR" ? "Metadados de produtor/ferramenta removidos." : "Producer/tool metadata removed.");
         break;
       case "creation_date":
       case "timestamp":
       case "datetime":
-        descriptions.add("Timestamp metadata removed.");
+        descriptions.add(locale === "pt-BR" ? "Metadados de data e hora removidos." : "Timestamp metadata removed.");
         break;
       default:
-        descriptions.add(`${key.replaceAll("_", " ")} removed.`);
+        descriptions.add(locale === "pt-BR" ? `${key.replaceAll("_", " ")} removido.` : `${key.replaceAll("_", " ")} removed.`);
     }
   });
   return Array.from(descriptions);

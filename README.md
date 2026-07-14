@@ -1,5 +1,7 @@
 # DataGuardian
 
+[Leia em Português do Brasil](README.pt-BR.md) · English is the primary and canonical project language.
+
 ![CI](https://github.com/joaosalero/dataguardian/actions/workflows/ci.yml/badge.svg)
 ![Dependabot](https://img.shields.io/badge/dependabot-enabled-brightgreen)
 ![Go](https://img.shields.io/badge/go-1.25-blue)

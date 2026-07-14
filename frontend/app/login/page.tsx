@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { LanguageSwitcher, useI18n } from "../i18n";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ??
@@ -33,6 +34,7 @@ async function readLoginError(response: Response) {
 }
 
 export default function LoginPage() {
+	const { t } = useI18n();
 	const router = useRouter();
 	const [username, setUsername] = useState("");
 	const [password, setPassword] = useState("");
@@ -42,7 +44,7 @@ export default function LoginPage() {
 
 	useEffect(() => {
 		if (window.location.search.includes("reason=session-expired")) {
-			setNotice("Your session expired. Sign in again to continue.");
+			setNotice(t("auth.sessionExpired", "Your session expired. Sign in again to continue."));
 		}
 	}, []);
 
@@ -61,7 +63,7 @@ export default function LoginPage() {
 
       if (!response.ok) {
         if (response.status === 429) {
-          throw new Error("Too many login attempts. Please wait and try again.");
+          throw new Error(t("auth.tooManyLogin", "Too many login attempts. Please wait and try again."));
         }
         throw new Error(await readLoginError(response));
       }
@@ -69,7 +71,7 @@ export default function LoginPage() {
       router.push("/dashboard");
     } catch (err) {
       if (err instanceof TypeError) {
-        setError("Backend is offline or unreachable. Start the API and try again.");
+        setError(t("auth.backendOffline", "Backend is offline or unreachable. Start the API and try again."));
       } else {
         setError(err instanceof Error ? err.message : "Network error. Please try again.");
       }
@@ -81,10 +83,11 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center px-6 py-10">
       <section className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="mb-4 flex justify-end"><LanguageSwitcher /></div>
         <div className="mb-6">
           <h1 className="text-2xl font-semibold text-gray-950">DataGuardian</h1>
           <p className="mt-1 text-sm text-gray-600">
-            Sign in to review projects and audits.
+            {t("auth.loginIntro", "Sign in to review projects and analyses.")}
           </p>
           {!IS_PRODUCTION ? (
             <p className="mt-3 rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-700">
@@ -100,7 +103,7 @@ export default function LoginPage() {
 
         <form className="space-y-4" onSubmit={handleSubmit}>
           <label className="block">
-            <span className="text-sm font-medium text-gray-700">Username</span>
+            <span className="text-sm font-medium text-gray-700">{t("auth.username", "Username")}</span>
             <input
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900"
               disabled={loading}
@@ -112,7 +115,7 @@ export default function LoginPage() {
           </label>
 
           <label className="block">
-            <span className="text-sm font-medium text-gray-700">Password</span>
+            <span className="text-sm font-medium text-gray-700">{t("auth.password", "Password")}</span>
             <input
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900"
               disabled={loading}
@@ -135,13 +138,13 @@ export default function LoginPage() {
             disabled={loading || !username.trim() || !password}
             type="submit"
           >
-            {loading ? "Signing in..." : "Sign in"}
+            {loading ? t("auth.signingIn", "Signing in...") : t("auth.signIn", "Sign in")}
           </button>
         </form>
         <p className="mt-4 text-center text-sm text-gray-600">
-          No account?{" "}
+          {t("auth.noAccount", "No account?")}{" "}
           <Link className="font-medium text-gray-950 hover:underline" href="/register">
-            Create account
+            {t("auth.createAccount", "Create account")}
           </Link>
         </p>
       </section>
