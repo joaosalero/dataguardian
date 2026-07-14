@@ -246,6 +246,9 @@ func validateSafeURL(ctx context.Context, raw string) (*url.URL, error) {
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return nil, ErrInvalidURL
 	}
+	if port := parsed.Port(); port != "" && !((parsed.Scheme == "http" && port == "80") || (parsed.Scheme == "https" && port == "443")) {
+		return nil, ErrUnsafeURL
+	}
 	if parsed.User != nil || parsed.Fragment != "" {
 		return nil, ErrInvalidURL
 	}

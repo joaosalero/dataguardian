@@ -26,6 +26,8 @@ const maxInlinePreviewAssetSize = 1024 * 1024
 const maxTextPreviewBytes = 4096
 const defaultAnalysisPageSize = 10
 const maxAnalysisPageSize = 50
+const maxURLLength = 2048
+const maxFilenameLength = 255
 
 var analyzeURL = analysis.AnalyzeURL
 
@@ -274,6 +276,14 @@ func (s *server) createFileAnalysis(w http.ResponseWriter, r *http.Request) {
 	checksumHex := hex.EncodeToString(checksum[:])
 	originalFilename := safeOriginalFilename(header.Filename)
 	extension := strings.ToLower(filepath.Ext(originalFilename))
+	if len(originalFilename) > maxFilenameLength {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"detail": "Filename is too long"})
+		return
+	}
+	if !extensionMatchesMimeType(extension, mimeType) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"detail": "File extension does not match detected content type"})
+		return
+	}
 	storedReference, err := storeAnalysisFile(s.cfg.StorageDir, checksumHex, extension, content)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
@@ -820,6 +830,9 @@ func validateCreateAnalysisRequest(payload CreateAnalysisRequest) string {
 	if payload.InputType == db.InputTypeURL && strings.TrimSpace(payload.URL.OriginalURL) == "" {
 		return "URL is required for URL analyses"
 	}
+	if payload.InputType == db.InputTypeURL && len(strings.TrimSpace(payload.URL.OriginalURL)) > maxURLLength {
+		return "URL exceeds the 2048 character limit"
+	}
 	return ""
 }
 
@@ -842,6 +855,21 @@ func allowedAnalysisMimeType(mimeType string) bool {
 		mimeType == "image/jpeg" ||
 		mimeType == "image/png" ||
 		strings.HasPrefix(mimeType, "text/plain")
+}
+
+func extensionMatchesMimeType(extension string, mimeType string) bool {
+	switch {
+	case mimeType == "application/pdf":
+		return extension == ".pdf"
+	case mimeType == "image/jpeg":
+		return extension == ".jpg" || extension == ".jpeg"
+	case mimeType == "image/png":
+		return extension == ".png"
+	case strings.HasPrefix(mimeType, "text/plain"):
+		return extension == ".txt"
+	default:
+		return false
+	}
 }
 
 func safeOriginalFilename(filename string) string {

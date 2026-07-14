@@ -58,7 +58,7 @@ func NewRouter(cfg config.Settings, store *db.Store) http.Handler {
 	mux.HandleFunc("DELETE /analyses/{id}", srv.requireAuth(srv.analysisLimiter.middleware("delete-analysis", srv.deleteAnalysis)))
 	mux.HandleFunc("GET /analyses/{id}/file", srv.requireAuth(srv.downloadLimiter.middleware("download-original", srv.downloadOriginalFile)))
 	mux.HandleFunc("GET /analyses/{id}/clean-file", srv.requireAuth(srv.downloadLimiter.middleware("download-clean", srv.downloadCleanFile)))
-	return securityHeaders(httpsRequired(cfg, withTenantContext(cors(mux))))
+	return securityHeaders(httpsRequired(cfg, csrfProtection(withTenantContext(cors(mux)))))
 }
 
 func (s *server) health(w http.ResponseWriter, _ *http.Request) {
@@ -237,6 +237,10 @@ func (s *server) createProject(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"detail": "Project name and target are required"})
 		return
 	}
+	if len(name) > 120 || len(target) > 2048 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"detail": "Project name or target is too long"})
+		return
+	}
 	project, err := s.store.CreateProject(r.Context(), userID, name, target)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "Internal server error"})
@@ -281,11 +285,11 @@ func (s *server) runAudit(w http.ResponseWriter, r *http.Request) {
 		r.Context(),
 		project.ID,
 		"completed",
-		"Baseline security audit completed for "+project.Target+".",
+		"Project readiness checklist completed for "+project.Target+".",
 		[]string{
-			"Authentication boundary verified for this project.",
-			"No critical exposure detected in the baseline audit.",
-			"Manual review recommended before production database access.",
+			"This checklist does not scan, connect to, or validate the target.",
+			"Use file or URL analysis for passive inspection of submitted content.",
+			"Manual security review is required before production use.",
 		},
 	)
 	if err != nil {
@@ -335,6 +339,7 @@ func readCredentials(w http.ResponseWriter, r *http.Request) (credentialsRequest
 }
 
 func readJSON(w http.ResponseWriter, r *http.Request, payload any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(payload); err != nil {

@@ -2,9 +2,29 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
 
 	"dataguardian/backend-go/internal/config"
 )
+
+func csrfProtection(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if strings.EqualFold(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site")), "cross-site") {
+			writeJSON(w, http.StatusForbidden, map[string]string{"detail": "Cross-site request rejected"})
+			return
+		}
+		origin := strings.TrimSpace(r.Header.Get("Origin"))
+		if origin != "" && origin != "http://localhost:3000" && origin != "http://127.0.0.1:3000" {
+			writeJSON(w, http.StatusForbidden, map[string]string{"detail": "Untrusted request origin"})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

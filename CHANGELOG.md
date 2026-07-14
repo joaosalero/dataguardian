@@ -3,6 +3,14 @@
 ## [Unreleased]
 
 ### Added
+- Local JSON and static PDF analysis exports
+- Read-only profile page and persistent dark mode
+- Versioned schema migration tracking and history indexes
+- CSRF and Fetch Metadata request protection
+- Real dashboard screenshot and secure packaging guidance
+- User-local desktop shortcuts and management menu for Windows, Linux, and macOS
+- Installable web manifest without sensitive offline caching
+- Contribution, pull request, issue, backup, and release documentation
 - File analysis (PDF, JPEG, PNG, plain text)
 - URL analysis with SSRF protection
 - Metadata extraction and classification

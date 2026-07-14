@@ -48,17 +48,17 @@
 - [x] Simplify startup around Docker Compose defaults
 - [x] Add Docker Compose validation service
 - [x] Polish portable ZIP onboarding flow
-- [ ] Add screenshots to README
-- [ ] Evaluate packaging options (.deb, Windows, macOS)
+- [x] Add screenshots to README
+- [x] Document secure cross-platform shortcut and packaging approach
 
 ---
 
 ## P3 — Nice to have
 
-- [ ] Dark mode UI
-- [ ] Export analysis as JSON file
-- [ ] Export report (PDF)
-- [ ] Add user profile/settings page
+- [x] Dark mode UI
+- [x] Export analysis as JSON file
+- [x] Export report (PDF)
+- [x] Add user profile/settings page
 
 ---
 

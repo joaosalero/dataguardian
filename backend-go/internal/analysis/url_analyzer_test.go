@@ -18,6 +18,25 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
+func TestValidateSafeURLRejectsUnsafePorts(t *testing.T) {
+	lookupURLIPAddrs = func(context.Context, string) ([]net.IPAddr, error) {
+		return []net.IPAddr{{IP: net.ParseIP("93.184.216.34")}}, nil
+	}
+	t.Cleanup(func() { lookupURLIPAddrs = net.DefaultResolver.LookupIPAddr })
+
+	for _, candidate := range []string{"http://example.com:22", "https://example.com:8443"} {
+		if _, err := validateSafeURL(context.Background(), candidate); !errors.Is(err, ErrUnsafeURL) {
+			t.Fatalf("expected unsafe port rejection for %s, got %v", candidate, err)
+		}
+	}
+}
+
+func TestUnsafeIPRejectsIPv4MappedPrivateAddress(t *testing.T) {
+	if !isUnsafeIP(net.ParseIP("::ffff:127.0.0.1")) || !isUnsafeIP(net.ParseIP("::ffff:10.0.0.1")) {
+		t.Fatal("expected IPv4-mapped private addresses to be unsafe")
+	}
+}
+
 func withURLTestHooks(t *testing.T, transport http.RoundTripper) {
 	t.Helper()
 	originalLookup := lookupURLIPAddrs
