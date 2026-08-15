@@ -54,6 +54,7 @@ node_modules/
 frontend/node_modules/
 .next/
 frontend/.next/
+frontend/next-env.d.ts
 out/
 frontend/out/
 coverage/
