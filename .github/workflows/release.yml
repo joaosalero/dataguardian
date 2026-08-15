@@ -10,17 +10,19 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Build source archive
         run: |
           mkdir -p dist
           git archive --format=tar.gz --prefix=dataguardian/ -o "dist/dataguardian-${GITHUB_REF_NAME}.tar.gz" HEAD
           sha256sum "dist/dataguardian-${GITHUB_REF_NAME}.tar.gz" > "dist/SHA256SUMS"
       - name: Generate SBOM
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           path: .
           format: spdx-json
