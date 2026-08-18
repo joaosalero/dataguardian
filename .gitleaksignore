@@ -1,0 +1,9 @@
+# Reviewed synthetic test/example findings. Fingerprints are exact and do not
+# suppress other findings in the same files.
+0ea839b47b665fc43142de44c222c135064bef7b:tests/e2e/test_full_flow.py:generic-api-key:42
+5806de6c1ef591c2eee0c7ecf29abf828b7578fe:backend/tests/test_auth.py:generic-api-key:292
+5806de6c1ef591c2eee0c7ecf29abf828b7578fe:backend/tests/test_auth.py:generic-api-key:296
+4b1114d3da97e255574eb7246d7664f496818e5e:README.md:generic-api-key:138
+4b1114d3da97e255574eb7246d7664f496818e5e:backend/tests/test_auth.py:generic-api-key:134
+4b1114d3da97e255574eb7246d7664f496818e5e:backend/tests/test_auth.py:generic-api-key:164
+tests/e2e/test_full_flow.py:generic-api-key:40

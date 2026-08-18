@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:15
+    image: postgres:15@sha256:5f72c7b5bd616308ccfd2e74d6be16fb06364e5eecbb815fe9dc6ab9761d2111
     container_name: dataguardian_db
     restart: always
     environment:
@@ -84,7 +84,7 @@ services:
       && echo 'DataGuardian validation passed'"
 
   backend-go-test:
-    image: golang:1.25
+    image: golang:1.25@sha256:cbff9d1a9041b316010f2da6b701b6c0d597718cb90928c85eb597334a0d23d4
     profiles: ["test"]
     working_dir: /app/backend-go
     environment:

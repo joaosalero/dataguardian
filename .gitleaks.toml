@@ -1,0 +1,8 @@
+title = "DataGuardian secret scanning"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Ignore ephemeral keys generated only inside the ignored Next.js build tree."
+paths = ['''(^|/)frontend/\.next/''']
