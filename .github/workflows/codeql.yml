@@ -21,11 +21,11 @@ jobs:
       matrix:
         language: [go, javascript-typescript]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - uses: github/codeql-action/init@f3712979fa5f215279b101dd0a2e3bdfb4353324 # v3
+      - uses: github/codeql-action/init@9e907b5e64f6b83e7804b09294d44122997950d6 # v4.32.3
         with:
           languages: ${{ matrix.language }}
-      - uses: github/codeql-action/autobuild@f3712979fa5f215279b101dd0a2e3bdfb4353324 # v3
-      - uses: github/codeql-action/analyze@f3712979fa5f215279b101dd0a2e3bdfb4353324 # v3
+      - uses: github/codeql-action/autobuild@9e907b5e64f6b83e7804b09294d44122997950d6 # v4.32.3
+      - uses: github/codeql-action/analyze@9e907b5e64f6b83e7804b09294d44122997950d6 # v4.32.3
