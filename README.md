@@ -32,6 +32,10 @@ Known limitations:
 
 ## What DataGuardian Does
 
+### Safe demonstration files
+
+The repository includes a deterministic, non-malicious corpus under `samples/`. It contains clean files, inert suspicious markers stored only in comments/metadata, and deliberately rejected MIME/extension cases. See [`samples/README.md`](samples/README.md) before use. Regenerate or verify it with `python3 scripts/generate_safe_samples.py --check`.
+
 DataGuardian lets you sign in, upload a supported file or submit a URL, and get
 a local security-oriented analysis before you decide whether to trust it. It
 shows a static safe preview when possible, metadata, deterministic findings,

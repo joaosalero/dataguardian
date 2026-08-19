@@ -268,6 +268,20 @@ func TestStoredFilePathForWriteRejectsUnsafeFilenames(t *testing.T) {
 	}
 }
 
+func TestSampleCorpusRejectedExtensionMismatches(t *testing.T) {
+	root := filepath.Join("..", "..", "..", "samples", "rejected")
+	for _, name := range []string{"mismatched-extension.jpg", "malformed.pdf"} {
+		content, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		mimeType := http.DetectContentType(content)
+		if extensionMatchesMimeType(strings.ToLower(filepath.Ext(name)), mimeType) {
+			t.Fatalf("expected %s (%s) to be rejected", name, mimeType)
+		}
+	}
+}
+
 func TestStorageSummaryRequiresAdmin(t *testing.T) {
 	store := newFakeAnalysisStore()
 	srv := &server{cfg: config.Settings{StorageDir: t.TempDir()}, store: store}
