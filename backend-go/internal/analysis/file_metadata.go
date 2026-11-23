@@ -175,7 +175,10 @@ func sanitizePDF(content []byte) CleanResult {
 		pattern := regexp.MustCompile(`/` + key + `\s*\([^)]*\)`)
 		if pattern.Match(cleaned) {
 			removed = append(removed, strings.ToLower(camelToSnake(key)))
-			cleaned = pattern.ReplaceAll(cleaned, nil)
+			// Keep byte offsets stable: PDF cross-reference entries point into this file.
+			cleaned = pattern.ReplaceAllFunc(cleaned, func(match []byte) []byte {
+				return bytes.Repeat([]byte{' '}, len(match))
+			})
 		}
 	}
 	return CleanResult{Content: cleaned, RemovedMetadataKeys: removed}

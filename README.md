@@ -27,8 +27,14 @@ Core features are functional:
 Known limitations:
 - Sanitized files remove selected metadata only; they are not a malware removal
   or full content-disarm guarantee.
+- File parsing and URL fetching run in the Go API process. Docker contains the
+  service; there is no separate sandbox or worker container per analysis.
 - Stored analysis files remain available for history and downloads. Startup
   cleanup removes only old unreferenced storage files.
+
+See the [engineering case study](docs/PORTFOLIO_CASE_STUDY.md) for the active
+architecture, trust boundaries, deterministic score model, and reviewable source
+references.
 
 ## What DataGuardian Does
 
@@ -58,7 +64,8 @@ are intentionally not executed.
 
 Supported uploads: PDF, JPEG, PNG, and plain text up to 10 MB.
 Supported safe previews: static JPEG/PNG images, plain text, and static PDF
-image previews. URL inspection is passive HTTP/HTTPS fetching only.
+inspection cards made from raw text snippets. PDF pages are not rendered.
+URL inspection is passive HTTP/HTTPS fetching only.
 
 DataGuardian stores original and sanitized analysis files so authenticated users
 can revisit results and download artifacts. On backend startup, unreferenced
@@ -169,6 +176,11 @@ http://localhost:3000
 
 Docker starts PostgreSQL, the Go backend, and the Next.js frontend together.
 No Go, Node.js, Python, or PostgreSQL install is required for normal use.
+
+Published database, API, and frontend ports bind to `127.0.0.1` by default.
+The supplied development accounts are intended for local evaluation. Deliberate
+remote deployment requires separate authentication, TLS, and network configuration;
+do not broaden the port bindings while using the demo configuration.
 
 ### Linux Users
 
@@ -780,7 +792,7 @@ Authenticated product routes:
 - `DELETE /analyses/{id}`: delete an analysis owned by the signed-in user and
   remove associated stored original/sanitized files when present.
 - `GET /analyses/{id}/file`: download the original uploaded file, or the
-  isolated remote file captured during a URL analysis, when one is available
+  remote file captured during a URL analysis, when one is available
   for an analysis owned by the signed-in user.
 - `GET /analyses/{id}/clean-file`: download the sanitized file for a file
   analysis or remote-file URL analysis when clean-file generation completed.
@@ -866,12 +878,16 @@ Current limits and behavior:
 - Metadata findings currently include `METADATA_GPS_EXPOSED`,
   `METADATA_AUTHOR_PRESENT`, and `METADATA_SUSPICIOUS_PRESENT`.
 - Safe Preview supports static JPEG/PNG image previews, plain-text previews,
-  and a first-page PDF static image generated from inert text snippets. It does
-  not embed a PDF viewer or execute PDF actions.
+  and a PDF inspection card generated from inert raw text snippets. It does
+  not parse a PDF's page layout, render its pages, embed a PDF viewer, or execute
+  PDF actions.
 - Sanitized file generation creates a metadata-cleaned file record for file analyses.
   JPEG sanitization removes EXIF APP1 segments. PDF sanitization removes a
   small set of non-essential literal metadata fields such as author, producer,
-  and creation date.
+  and creation date by replacing matched fields with equal-length whitespace,
+  preserving existing cross-reference byte offsets. This is a lightweight
+  byte-pattern operation, not a complete PDF parser: compressed metadata, complex
+  literal strings, and digital-signature validity are not guaranteed.
 - `cleanFile` is returned for PDF and JPEG file analyses, including supported
   remote-file URL analyses, when sanitization is recorded. PNG, text, and URL
   responses without a supported remote file return `cleanFile: null`.
@@ -929,7 +945,7 @@ Current limits and behavior:
   bytes. HTML tags, scripts, and styles are stripped as text processing only;
   the page is never rendered.
 - If the URL response is a supported downloadable file, DataGuardian stores an
-  isolated backend copy and runs the same file inspection pipeline before any
+  independent backend copy and runs the same file inspection pipeline before any
   local download. Initial remote file support is limited to PDF, JPEG, PNG, and
   plain text responses under the URL response size limit. Misleading file
   content types are checked against fetched bytes before entering the
