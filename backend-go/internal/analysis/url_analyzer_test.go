@@ -37,6 +37,19 @@ func TestUnsafeIPRejectsIPv4MappedPrivateAddress(t *testing.T) {
 	}
 }
 
+func TestURLAddressPolicyForSharedIPv4Space(t *testing.T) {
+	for _, addr := range []string{"100.64.0.0", "100.127.255.255", "::ffff:100.64.0.1"} {
+		if !isUnsafeIP(net.ParseIP(addr)) {
+			t.Errorf("expected shared address %s to be rejected", addr)
+		}
+	}
+	for _, addr := range []string{"100.63.255.255", "100.128.0.0"} {
+		if isUnsafeIP(net.ParseIP(addr)) {
+			t.Errorf("adjacent address %s was incorrectly classified as shared", addr)
+		}
+	}
+}
+
 func withURLTestHooks(t *testing.T, transport http.RoundTripper) {
 	t.Helper()
 	originalLookup := lookupURLIPAddrs

@@ -370,12 +370,9 @@ test  / test123
 
 The dashboard includes passive analysis, risk review, static previews, metadata-only sanitized copies, local JSON/PDF report export, profile visibility, and a persistent dark theme.
 
-Screenshots are planned for the public README:
-
-- Login and registration
-- Dashboard and analysis history
-- Safe preview and findings
-- Original vs sanitized download panels
+The [file and URL demonstration](docs/PORTFOLIO_CASE_STUDY.md#observed-file-and-url-inspection)
+includes a captured dashboard result, the exact finding and score for a
+synthetic PDF, and an offline HTTP-response fixture.
 
 ### Tests For Users
 
@@ -978,7 +975,9 @@ URL security boundary:
   reduce SSRF risk.
 - The same SSRF checks are applied to redirect targets before each request.
   The HTTP transport also resolves and validates the dial target so the request
-  uses a checked public IP instead of relying on an unchecked re-resolution.
+  connects to the validated address directly. The policy also rejects shared
+  IPv4 address space (RFC 6598). Restrict egress independently when deploying
+  on networks with custom routes or address translation.
 - The implementation is structured for future network isolation or sandboxing,
   but does not provide a separate sandbox yet.
 
