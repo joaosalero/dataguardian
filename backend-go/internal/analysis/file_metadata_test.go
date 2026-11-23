@@ -45,6 +45,15 @@ func TestExtractJPEGEXIFMetadataIncludesGPS(t *testing.T) {
 	}
 }
 
+func TestEXIFEntryBorrowsSourceBytes(t *testing.T) {
+	tiff := buildLittleEndianEXIF()
+	entries := parseIFD(tiff, 8, binary.LittleEndian)
+	camera := entries[0x0110].value
+	if len(camera) != 8 || &camera[0] != &tiff[80] {
+		t.Fatal("expected the camera model to be a read-only view of the input")
+	}
+}
+
 func TestSanitizePDFRemovesNonEssentialMetadata(t *testing.T) {
 	content := []byte("%PDF-1.7\n<< /Author (Alice) /Producer (DataTool) /CreationDate (D:20260505120000Z) >>")
 

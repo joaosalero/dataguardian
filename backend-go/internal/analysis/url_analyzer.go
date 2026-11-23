@@ -32,6 +32,7 @@ var (
 
 var lookupURLIPAddrs = net.DefaultResolver.LookupIPAddr
 var urlHTTPTransport http.RoundTripper
+var sharedIPv4Space = net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
 
 // URLResult contains the persisted URL target details and deterministic findings.
 type URLResult struct {
@@ -290,7 +291,9 @@ func resolveSafeHost(ctx context.Context, host string) ([]net.IP, error) {
 }
 
 func isUnsafeIP(ip net.IP) bool {
-	return !ip.IsGlobalUnicast() || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsUnspecified()
+	// Shared address space can be routed inside an operator network and is outside RFC 1918.
+	return !ip.IsGlobalUnicast() || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+		ip.IsUnspecified() || sharedIPv4Space.Contains(ip)
 }
 
 func fetchURL(ctx context.Context, start *url.URL, target db.URLTarget) (db.URLTarget, []byte, error) {
