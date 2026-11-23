@@ -3,6 +3,7 @@ package analysis
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"testing"
 
 	"dataguardian/backend-go/internal/db"
@@ -56,6 +57,44 @@ func TestSanitizePDFRemovesNonEssentialMetadata(t *testing.T) {
 	}
 	if len(clean.RemovedMetadataKeys) != 3 {
 		t.Fatalf("expected removed PDF metadata keys, got %#v", clean.RemovedMetadataKeys)
+	}
+}
+
+func TestSanitizePDFPreservesCrossReferenceOffsetsAndOriginal(t *testing.T) {
+	var pdf bytes.Buffer
+	pdf.WriteString("%PDF-1.7\n")
+	infoOffset := pdf.Len()
+	pdf.WriteString("1 0 obj\n<< /Author (Alice) /Producer (DataTool) >>\nendobj\n")
+	catalogOffset := pdf.Len()
+	pdf.WriteString("2 0 obj\n<< /Type /Catalog /Pages 3 0 R >>\nendobj\n")
+	pagesOffset := pdf.Len()
+	pdf.WriteString("3 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n")
+	xrefOffset := pdf.Len()
+	fmt.Fprintf(&pdf, "xref\n0 4\n0000000000 65535 f \n%010d 00000 n \n%010d 00000 n \n%010d 00000 n \n", infoOffset, catalogOffset, pagesOffset)
+	fmt.Fprintf(&pdf, "trailer\n<< /Size 4 /Root 2 0 R /Info 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", xrefOffset)
+	original := append([]byte(nil), pdf.Bytes()...)
+	input := append([]byte(nil), original...)
+
+	clean, err := SanitizeFile(input, "application/pdf")
+	if err != nil {
+		t.Fatalf("SanitizeFile returned error: %v", err)
+	}
+	if len(clean.Content) != len(original) {
+		t.Fatalf("PDF length changed from %d to %d; xref offsets would be invalid", len(original), len(clean.Content))
+	}
+	for offset, marker := range map[int]string{infoOffset: "1 0 obj", catalogOffset: "2 0 obj", pagesOffset: "3 0 obj", xrefOffset: "xref"} {
+		if !bytes.HasPrefix(clean.Content[offset:], []byte(marker)) {
+			t.Fatalf("expected %q at original PDF offset %d", marker, offset)
+		}
+	}
+	if !bytes.Equal(clean.Content[xrefOffset:], original[xrefOffset:]) {
+		t.Fatal("cross-reference table and trailer must remain unchanged")
+	}
+	if bytes.Contains(clean.Content, []byte("Alice")) || bytes.Contains(clean.Content, []byte("DataTool")) {
+		t.Fatal("expected supported metadata values to be removed")
+	}
+	if !bytes.Equal(input, original) {
+		t.Fatal("sanitization must preserve original input bytes")
 	}
 }
 

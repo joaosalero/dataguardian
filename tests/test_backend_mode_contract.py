@@ -1,7 +1,18 @@
+import re
 from pathlib import Path
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+
+
+def test_default_published_ports_are_loopback_only() -> None:
+    compose = (ROOT_DIR / "docker-compose.yml").read_text()
+    ports = re.findall(r'^\s+- "([^"\n]+:[0-9]+)"\s*$', compose, re.MULTILINE)
+
+    assert len(ports) == 3, "Expected database, backend and frontend port bindings"
+    assert all(port.startswith("127.0.0.1:") for port in ports), (
+        "Local demo credentials must not be exposed through default LAN bindings"
+    )
 
 
 def test_runtime_uses_go_backend_only() -> None:
