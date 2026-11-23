@@ -54,15 +54,21 @@ func extractPDFMetadata(content []byte) []db.MetadataEntry {
 
 func pdfLiteralMetadata(content []byte) map[string]string {
 	values := map[string]string{}
-	for _, match := range pdfLiteralMetadataPattern.FindAllSubmatch(content, -1) {
-		key := string(match[1])
+	for len(values) < 3 {
+		match := pdfLiteralMetadataPattern.FindSubmatchIndex(content)
+		if match == nil {
+			break
+		}
+		key := string(content[match[2]:match[3]])
+		literal := content[match[4]:match[5]]
+		content = content[match[1]:]
 		if key != "Producer" && key != "Author" && key != "CreationDate" {
 			continue
 		}
 		if _, exists := values[key]; exists {
 			continue
 		}
-		if value := strings.TrimSpace(unescapePDFLiteral(match[2])); value != "" {
+		if value := strings.TrimSpace(unescapePDFLiteral(literal)); value != "" {
 			values[key] = value
 		}
 	}
@@ -322,7 +328,8 @@ func parseIFD(tiff []byte, offset int, order binary.ByteOrder) map[uint16]exifEn
 		} else {
 			value = raw[:valueSize]
 		}
-		entries[tag] = exifEntry{fieldType: fieldType, count: valueCount, value: append([]byte(nil), value...)}
+		// Entries borrow read-only spans of this TIFF buffer during metadata extraction.
+		entries[tag] = exifEntry{fieldType: fieldType, count: valueCount, value: value}
 		pos += 12
 	}
 	return entries
